@@ -12,10 +12,9 @@ max_payload_length = 96  # 最大负载长度（比特数）
 """
 数据包结构:
 preamble: 11111111
-header: payload_length(8 bit) payload_rank(8 bit)
+header: payload_length(8 bit) payload_rank(8 bit) end_flag(8 bit)
 payload: 最大长度 = 96 bit
 """
-
 
 # 汉明码编码器（7,4编码）
 def hamming_encode(data):
@@ -46,15 +45,16 @@ def text_to_binary(text):
 
 
 # 创建数据包
-def create_packet(data, packet_rank):
+def create_packet(data, packet_rank, is_end=False):
     preamble = '11111111'  # 前导码
     rank = format(packet_rank, '08b')  # 包头：包序号信息
+    end_flag = '1' if is_end else '0'  # 是否结束的标识符（8 bit）
 
     # 对数据部分进行汉明编码
     encoded_data = hamming_encode(data)
     length = format(len(encoded_data), '08b')  # 包头：长度信息
     # 组成数据包
-    packet = preamble + length + rank + encoded_data
+    packet = preamble + length + rank + end_flag + encoded_data
     return packet
 
 
@@ -62,10 +62,12 @@ def create_packet(data, packet_rank):
 def split_into_packets(binary_data):
     packets = []
     packet_rank = 1
+    total_packets = (len(binary_data) + max_payload_length - 1) // max_payload_length  # 总包数
     # 每个数据包最大负载长度为96 bits
     for i in range(0, len(binary_data), max_payload_length):
         data_chunk = binary_data[i:i + max_payload_length]
-        packet = create_packet(data_chunk, packet_rank)
+        is_end = (packet_rank == total_packets)  # 判断是否是最后一个包
+        packet = create_packet(data_chunk, packet_rank, is_end)
         packets.append(packet)
         packet_rank += 1
     return packets
@@ -98,12 +100,13 @@ def play_signal(signal):
 # 主程序
 def main():
     # 控制是否存储为 wav 文件或直接播放声音
-    save_to_wav = True  # 设置为 True 来保存为 wav 文件，设置为 False 来播放声音
+    save_to_wav = False  # 设置为 True 来保存为 wav 文件，设置为 False 来播放声音
 
     text = input("请输入文本：")
     binary_data = text_to_binary(text)  # 将文本转为二进制
     packets = split_into_packets(binary_data)  # 将数据划分为多个包
 
+    # 发送数据包
     for packet_rank, packet in enumerate(packets, 1):  # 枚举包的序号
         signal = modulate_fsk(packet)  # 调制为声波信号
 

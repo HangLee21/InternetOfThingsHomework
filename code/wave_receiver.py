@@ -173,15 +173,21 @@ def decode_signal(file_paths=None, use_file_input=True):
                 # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
                 payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
                 packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
-                print(f"包{packet_rank} 数据长度: {payload_length} bits")
+                end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
+                print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
 
                 # 获取数据段（Payload），并加入汉明解码
-                payload = signal_bits[preamble_idx + 24:preamble_idx + 24 + payload_length]
+                payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
                 corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
                 decoded_payloads[packet_rank] = corrected_payload  # 将纠错后的payload按照packet_rank存入字典
 
+                # 检查是否为最后一个包，若是，停止接收
+                if end_flag == 1:
+                    print("接收到最后一个包，结束接收。")
+                    break
+
                 # 查找下一个数据包的前导码
-                preamble_idx = signal_bits.find(preamble, preamble_idx + 24 + payload_length)
+                preamble_idx = signal_bits.find(preamble, preamble_idx + 32 + payload_length)
 
     else:
         # 从麦克风实时接收音频
@@ -201,15 +207,21 @@ def decode_signal(file_paths=None, use_file_input=True):
             # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
             payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
             packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
-            print(f"包{packet_rank} 数据长度: {payload_length} bits")
+            end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
+            print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
 
             # 获取数据段（Payload），并加入汉明解码
-            payload = signal_bits[preamble_idx + 24:preamble_idx + 24 + payload_length]
+            payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
             corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
             decoded_payloads[packet_rank] = corrected_payload  # 将纠错后的payload按照packet_rank存入字典
 
+            # 检查是否为最后一个包，若是，停止接收
+            if end_flag == 1:
+                print("接收到最后一个包，结束接收。")
+                break
+
             # 查找下一个数据包的前导码
-            preamble_idx = signal_bits.find(preamble, preamble_idx + 24 + payload_length)
+            preamble_idx = signal_bits.find(preamble, preamble_idx + 32 + payload_length)
 
     # 根据包序号排序所有数据包
     sorted_payloads = [decoded_payloads[rank] for rank in sorted(decoded_payloads.keys())]
