@@ -51,10 +51,15 @@ def modulate_fsk(binary_data):
             signal.append(np.sin(2 * np.pi * freq_1 * t))
     return np.concatenate(signal)
 
-# 保存每个包的调制信号为不同的wav文件
-def save_signal_to_wav(signal, packet_rank):
-    filename = f'output/modulated_signal_packet_{packet_rank}.wav'
-    write(filename, sample_rate, signal.astype(np.float32))
+# 模拟发送信号，通过Pygame播放音频
+def play_signal(signal):
+    # 将信号转换为合适的音频格式，范围从 -1 到 1
+    signal = np.int16(signal / np.max(np.abs(signal)) * 32767)
+    # 使用pygame播放信号
+    pygame.mixer.init(frequency=sample_rate, size=-16, channels=1)
+    pygame.mixer.Sound(signal.tobytes()).play()
+    # 播放直到完成
+    pygame.time.wait(int(len(signal) / sample_rate * 1000))
 
 # 主程序
 def main():
@@ -63,7 +68,8 @@ def main():
     packets = split_into_packets(binary_data)  # 将数据划分为多个包
     for packet_rank, packet in enumerate(packets, 1):  # 枚举包的序号
         signal = modulate_fsk(packet)  # 调制为声波信号
-        save_signal_to_wav(signal, packet_rank)  # 保存每个包的信号为不同的wav文件
+        print(f"正在发送包 {packet_rank}...")
+        play_signal(signal)  # 模拟发送信号
 
 # 运行主程序
 main()
