@@ -3,6 +3,7 @@ import numpy as np
 import tkinter as tk
 import pyaudio
 from scipy.io.wavfile import read
+import time
 
 # 解调参数
 sample_rate = 44100  # 采样率
@@ -35,14 +36,22 @@ def record_audio_stream():
         while True:
             data = stream.read(1024)
             frames.append(np.frombuffer(data, dtype=np.int16))
-            if len(frames) > int(sample_rate / 1024 * 10):  # 收集10秒的数据
-                break
+            signal = np.concatenate(frames)
+            # 实时解码
+            signal_bits = demodulate_fsk(signal)
+
+            # 假设前导码是'11111111'，并寻找前导码同步信号
+            preamble = '11111111'  # 前导码
+            preamble_idx = signal_bits.find(preamble)
+
+            if preamble_idx != -1:
+                # 解码数据包
+                decode_data_packet(signal_bits, preamble_idx)
     except KeyboardInterrupt:
         print("停止接收音频信号")
         stream.stop_stream()
         stream.close()
         p.terminate()
-    return np.concatenate(frames)
 
 
 # 提取信号中的频率成分（FSK解调）
@@ -71,9 +80,30 @@ def demodulate_fsk(signal):
 
     # 获取解调后的比特串
     signal_bits = ''.join(decoded_bits)
-    print(f"解调后的比特串: {signal_bits}")
-
     return signal_bits
+
+
+# 解码数据包
+def decode_data_packet(signal_bits, preamble_idx):
+    # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
+    payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
+    packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
+    end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
+    print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
+
+    # 获取数据段（Payload），并加入汉明解码
+    payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
+    corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
+
+    # 输出解码的内容
+    print(f"解码后的有效负载: {corrected_payload}")
+
+    # 如果接收到的包是最后一个包，则停止监听
+    if end_flag == 1:
+        print("接收到最后一个包，结束接收。")
+        return
+
+    # 可以选择继续监听下一包，或根据需要添加更多处理逻辑
 
 
 # 汉明码解码器（纠错）
@@ -150,95 +180,23 @@ def decode_signal(file_paths=None, use_file_input=True):
     decoded_payloads = {}
     packet_rank = 1
 
-    # 如果使用文件输入，则从文件中读取音频数据
     if use_file_input:
-        # 处理每个数据包文件
         for file_path in file_paths:
             # 读取音频文件
             rate, signal = read_wave(file_path)
-
-            # 解调得到比特串
             signal_bits = demodulate_fsk(signal)
-
-            # 假设前导码是'11111111'，并寻找前导码同步信号
             preamble = '11111111'  # 前导码
             preamble_idx = signal_bits.find(preamble)
 
-            if preamble_idx == -1:
-                print(f"未找到前导码，解码失败：{file_path}")
-                continue
-
-            # 解码数据包
-            while preamble_idx != -1:
-                # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
-                payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
-                packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
-                end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
-                print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
-
-                # 获取数据段（Payload），并加入汉明解码
-                payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
-                corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
-                decoded_payloads[packet_rank] = corrected_payload  # 将纠错后的payload按照packet_rank存入字典
-
-                # 检查是否为最后一个包，若是，停止接收
-                if end_flag == 1:
-                    print("接收到最后一个包，结束接收。")
-                    break
-
-                # 查找下一个数据包的前导码
-                preamble_idx = signal_bits.find(preamble, preamble_idx + 32 + payload_length)
-
+            if preamble_idx != -1:
+                decode_data_packet(signal_bits, preamble_idx)
     else:
-        # 从麦克风实时接收音频
-        signal = record_audio_stream()
-        signal_bits = demodulate_fsk(signal)
-
-        # 假设前导码是'11111111'，并寻找前导码同步信号
-        preamble = '11111111'  # 前导码
-        preamble_idx = signal_bits.find(preamble)
-
-        if preamble_idx == -1:
-            print(f"未找到前导码，解码失败：实时音频信号")
-            return
-
-        # 解码数据包
-        while preamble_idx != -1:
-            # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
-            payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
-            packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
-            end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
-            print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
-
-            # 获取数据段（Payload），并加入汉明解码
-            payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
-            corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
-            decoded_payloads[packet_rank] = corrected_payload  # 将纠错后的payload按照packet_rank存入字典
-
-            # 检查是否为最后一个包，若是，停止接收
-            if end_flag == 1:
-                print("接收到最后一个包，结束接收。")
-                break
-
-            # 查找下一个数据包的前导码
-            preamble_idx = signal_bits.find(preamble, preamble_idx + 32 + payload_length)
-
-    # 根据包序号排序所有数据包
-    sorted_payloads = [decoded_payloads[rank] for rank in sorted(decoded_payloads.keys())]
-
-    # 拼接所有数据包的内容
-    full_data = concatenate_payloads(sorted_payloads)
-    decoded_text = binary_to_text(full_data)
-
-    print(decoded_text)
-    # 展示解码后的文本
-    display_decoded_text(decoded_text)
+        record_audio_stream()
 
 
 # 示例：执行解码流程
-use_file_input = True  # 设置为 False 来实时接收音频信号，True 来从文件读取
+use_file_input = False  # 设置为 False 来实时接收音频信号
 if use_file_input:
-    # 假设文件名为 modulated_signal_packet_1.wav, modulated_signal_packet_2.wav 等
     directory = 'output'
     file_paths = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.wav')]
     decode_signal(file_paths=file_paths, use_file_input=True)
