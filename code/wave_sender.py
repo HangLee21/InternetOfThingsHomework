@@ -1,20 +1,22 @@
 import numpy as np
 import pygame
 from scipy.io.wavfile import write
+import sounddevice as sd
 
 # 调制参数
 sample_rate = 44100  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
 freq_1 = 2000  # 频率1对应2000 Hz
-max_payload_length = 96  # 最大负载长度（比特数）
+max_payload_length = 192  # 最大负载长度（比特数）
 
 """
 数据包结构:
 preamble: 11111111
-header: payload_length(8 bit) payload_rank(8 bit) end_flag(8 bit)
+header: payload_length(8 bit) payload_rank(8 bit) total_packet_length(8 bit)
 payload: 最大长度 = 96 bit
 """
+
 
 # 汉明码编码器（7,4编码）
 def hamming_encode(data):
@@ -45,16 +47,17 @@ def text_to_binary(text):
 
 
 # 创建数据包
-def create_packet(data, packet_rank, is_end=False):
+def create_packet(data, packet_rank, total_packets):
     preamble = '11111111'  # 前导码
+
     rank = format(packet_rank, '08b')  # 包头：包序号信息
-    end_flag = '1' if is_end else '0'  # 是否结束的标识符（8 bit）
+    total_packet_length = format(total_packets, '08b')  # 包头：总包数（8 bit）
 
     # 对数据部分进行汉明编码
     encoded_data = hamming_encode(data)
-    length = format(len(encoded_data), '08b')  # 包头：长度信息
+    payload_length = format(len(encoded_data), '08b')  # 包头：数据长度（以比特为单位）
     # 组成数据包
-    packet = preamble + length + rank + end_flag + encoded_data
+    packet = preamble + payload_length + rank + total_packet_length + encoded_data
     return packet
 
 
@@ -66,8 +69,7 @@ def split_into_packets(binary_data):
     # 每个数据包最大负载长度为96 bits
     for i in range(0, len(binary_data), max_payload_length):
         data_chunk = binary_data[i:i + max_payload_length]
-        is_end = (packet_rank == total_packets)  # 判断是否是最后一个包
-        packet = create_packet(data_chunk, packet_rank, is_end)
+        packet = create_packet(data_chunk, packet_rank, total_packets)
         packets.append(packet)
         packet_rank += 1
     return packets
@@ -93,8 +95,14 @@ def save_signal_to_wav(signal, packet_rank):
 
 # 播放信号
 def play_signal(signal):
-    pygame.mixer.init(frequency=sample_rate)
-    pygame.mixer.Sound(np.array(signal * 32767, dtype=np.int16)).play()
+    # 将信号的振幅缩放到[-1, 1]范围内，并转换为int16类型
+    signal = np.array(signal)
+    signal = np.int16(signal / np.max(np.abs(signal)) * 32767)
+    try:
+        sd.play(signal, sample_rate)
+        sd.wait()
+    except Exception as e:
+        print(f"音频播放出错: {e}")
 
 
 # 主程序
@@ -107,6 +115,7 @@ def main():
     packets = split_into_packets(binary_data)  # 将数据划分为多个包
 
     # 发送数据包
+    total_packets = len(packets)  # 获取总包数
     for packet_rank, packet in enumerate(packets, 1):  # 枚举包的序号
         signal = modulate_fsk(packet)  # 调制为声波信号
 
@@ -114,6 +123,10 @@ def main():
             save_signal_to_wav(signal, packet_rank)  # 保存每个包的信号为不同的wav文件
         else:
             play_signal(signal)  # 播放声音
+
+        # 判断是否为最后一个包，控制输出
+        if packet_rank == total_packets:
+            print("所有数据包已发送完毕。")
 
 
 # 运行主程序

@@ -10,7 +10,7 @@ sample_rate = 44100  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
 freq_1 = 2000  # 频率1对应2000 Hz
-max_payload_length = 96  # 最大负载长度（比特数）
+max_payload_length = 192  # 最大负载长度（比特数）
 
 
 # 读取声波信号并提取数据
@@ -32,6 +32,10 @@ def record_audio_stream():
     print("开始接收音频信号...")
 
     frames = []
+    received_packets = 0
+    total_packets = 0  # 将此变量用于跟踪总包数
+    decoded_payloads = []
+
     try:
         while True:
             data = stream.read(1024)
@@ -46,7 +50,23 @@ def record_audio_stream():
 
             if preamble_idx != -1:
                 # 解码数据包
-                decode_data_packet(signal_bits, preamble_idx)
+                decoded_packet = decode_data_packet(signal_bits, preamble_idx)
+
+                # 更新已接收的包数量
+                if decoded_packet is not None:
+                    received_packets += 1
+                    decoded_payloads.append(decoded_packet)
+
+                    # 获取包头中的总包数
+                    total_packets = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)
+
+                    print(f"已接收到{received_packets}/{total_packets}个数据包")
+
+                # 如果接收到的包数量等于总包数，则停止接收
+                if received_packets == total_packets:
+                    print("已接收到所有数据包，停止接收。")
+                    break
+
     except KeyboardInterrupt:
         print("停止接收音频信号")
         stream.stop_stream()
@@ -88,22 +108,18 @@ def decode_data_packet(signal_bits, preamble_idx):
     # 获取包头的长度信息（8 bit）和包序号信息（8 bit）
     payload_length = int(signal_bits[preamble_idx + 8:preamble_idx + 16], 2)
     packet_rank = int(signal_bits[preamble_idx + 16:preamble_idx + 24], 2)  # 解析包序号
-    end_flag = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析结束标志位
-    print(f"包{packet_rank} 数据长度: {payload_length} bits, end_flag={end_flag}")
+    total_packet_length = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)  # 解析总包数
+    print(f"包{packet_rank} 数据长度: {payload_length} bits, 总包数: {total_packet_length}")
 
     # 获取数据段（Payload），并加入汉明解码
     payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
     corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
 
-    # 输出解码的内容
-    print(f"解码后的有效负载: {corrected_payload}")
-
     # 如果接收到的包是最后一个包，则停止监听
-    if end_flag == 1:
+    if packet_rank == total_packet_length:
         print("接收到最后一个包，结束接收。")
-        return
 
-    # 可以选择继续监听下一包，或根据需要添加更多处理逻辑
+    return binary_to_text(corrected_payload), packet_rank  # 返回有效负载
 
 
 # 汉明码解码器（纠错）
@@ -177,8 +193,9 @@ def display_decoded_text(decoded_text):
 
 # 完整的解码流程
 def decode_signal(file_paths=None, use_file_input=True):
-    decoded_payloads = {}
+    decoded_payloads = {}  # 用来存储包序号和解码的文本
     packet_rank = 1
+    text = ''
 
     if use_file_input:
         for file_path in file_paths:
@@ -189,7 +206,17 @@ def decode_signal(file_paths=None, use_file_input=True):
             preamble_idx = signal_bits.find(preamble)
 
             if preamble_idx != -1:
-                decode_data_packet(signal_bits, preamble_idx)
+                # 解码数据包并返回解码后的文本和包序号
+                decoded_text, packet_rank = decode_data_packet(signal_bits, preamble_idx)
+                decoded_payloads[packet_rank] = decoded_text  # 将文本保存到字典中，键为包序号
+
+        # 按照 packet_rank 排序字典的键
+        sorted_payloads = sorted(decoded_payloads.items(), key=lambda x: x[0])  # 按包序号排序
+        # 拼接排序后的文本
+        full_text = ''.join([text for _, text in sorted_payloads])  # 拼接所有包的文本
+
+        display_decoded_text(full_text)  # 显示完整的解码文本
+
     else:
         record_audio_stream()
 
