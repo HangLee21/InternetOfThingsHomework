@@ -21,8 +21,12 @@ def read_wave(file_path):
     return rate, data
 
 
-# 从麦克风实时接收音频信号
+# 缓冲区，用于缓存接收到的音频信号
+buffer = []
+
+# 读取实时音频流
 def record_audio_stream():
+    global buffer
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=1,
@@ -31,47 +35,77 @@ def record_audio_stream():
                     frames_per_buffer=1024)
     print("开始接收音频信号...")
 
-    frames = []
-    received_packets = 0
-    total_packets = 0  # 将此变量用于跟踪总包数
-    decoded_payloads = []
+    # 用于跟踪接收的包序号
+    total_packets_received = 0
+    total_packets = 0  # 先设置为 0，稍后通过解析 header 获取总包数
 
     try:
         while True:
             data = stream.read(1024)
-            frames.append(np.frombuffer(data, dtype=np.int16))
-            signal = np.concatenate(frames)
-            # 实时解码
-            signal_bits = demodulate_fsk(signal)
+            buffer.extend(np.frombuffer(data, dtype=np.int16))  # 将新数据添加到缓冲区
 
-            # 假设前导码是'11111111'，并寻找前导码同步信号
-            preamble = '11111111'  # 前导码
-            preamble_idx = signal_bits.find(preamble)
+            # 检查是否有足够的数据来解码
+            if len(buffer) > sample_rate * bit_duration:
+                signal_bits = demodulate_fsk(buffer)  # 调用解调函数
+                preamble = '11111111'  # 前导码
+                preamble_idx = signal_bits.find(preamble)
 
-            if preamble_idx != -1:
-                # 解码数据包
-                decoded_packet = decode_data_packet(signal_bits, preamble_idx)
+                if preamble_idx != -1:
+                    print("检测到前导码，开始解码数据包...")
 
-                # 更新已接收的包数量
-                if decoded_packet is not None:
-                    received_packets += 1
-                    decoded_payloads.append(decoded_packet)
+                    # 等待足够的header和payload数据
+                    header_end_idx = preamble_idx + len(preamble) + 24  # header为24位
+                    if len(buffer) >= header_end_idx:
+                        header_bits = signal_bits[preamble_idx + len(preamble):header_end_idx]
 
-                    # 获取包头中的总包数
-                    total_packets = int(signal_bits[preamble_idx + 24:preamble_idx + 32], 2)
+                        # 解析header
+                        payload_length, packet_rank, total_packet_length = parse_header(header_bits)
+                        total_packets = total_packet_length  # 获取总包数
 
-                    print(f"已接收到{received_packets}/{total_packets}个数据包")
+                        # 等待足够的payload数据
+                        payload_end_idx = header_end_idx + payload_length
+                        if len(buffer) >= payload_end_idx:
+                            payload_bits = signal_bits[header_end_idx: payload_end_idx]
 
-                # 如果接收到的包数量等于总包数，则停止接收
-                if received_packets == total_packets:
-                    print("已接收到所有数据包，停止接收。")
-                    break
+                            # 解码数据包
+                            text = decode_data_packet(payload_bits)
+                            print(f"包{packet_rank}内容：{text}")
 
+                            # 将解码内容缓存（或者直接处理）
+                            buffer = buffer[preamble_idx + len(preamble) + 24 + payload_length:]
+
+                            # 更新接收的包的序号
+                            total_packets_received += 1
+
+                            # 如果接收到所有包，停止接收
+                            if total_packets_received == total_packets:
+                                print("所有包已接收完毕，停止接收数据。")
+                                break
+
+                # 如果缓冲区没有足够的数据，则继续接收
+                else:
+                    continue
     except KeyboardInterrupt:
         print("停止接收音频信号")
         stream.stop_stream()
         stream.close()
         p.terminate()
+
+# 解析header信息（24位）
+def parse_header(header_bits):
+    payload_length = int(header_bits[0:8], 2)  # 前8位是payload长度
+    packet_rank = int(header_bits[8:16], 2)  # 接下来的8位是包序号
+    total_packet_length = int(header_bits[16:24], 2)  # 后8位是总包数
+    print(f"包序号: {packet_rank}, payload 长度: {payload_length} bits, 总包数: {total_packet_length}")
+    return payload_length, packet_rank, total_packet_length
+
+
+# 解码数据包
+def decode_data_packet(payload_bits):
+    # 解码payload（假设payload不含错误，需要汉明解码）
+    decoded_payload = hamming_decode(payload_bits)  # 纠错后得到有效负载
+    return binary_to_text(decoded_payload)
+
 
 
 # 提取信号中的频率成分（FSK解调）
