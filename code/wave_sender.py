@@ -58,6 +58,8 @@ def create_packet(data, packet_rank, total_packets):
     payload_length = format(len(encoded_data), '08b')  # 包头：数据长度（以比特为单位）
     # 组成数据包
     packet = preamble + payload_length + rank + total_packet_length + encoded_data
+
+    print(packet)
     return packet
 
 

@@ -3,7 +3,9 @@ import numpy as np
 import tkinter as tk
 import pyaudio
 from scipy.io.wavfile import read
-import time
+from scipy.signal import butter, filtfilt
+import numpy as np
+import matplotlib.pyplot as plt
 
 # 解调参数
 sample_rate = 44100  # 采样率
@@ -11,6 +13,15 @@ bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
 freq_1 = 2000  # 频率1对应2000 Hz
 max_payload_length = 192  # 最大负载长度（比特数）
+
+# 带通滤波器设计
+def bandpass_filter(signal, lowcut, highcut, sample_rate):
+    nyquist = 0.5 * sample_rate  # 奈奎斯特频率
+    low = lowcut / nyquist  # 低频截止频率
+    high = highcut / nyquist  # 高频截止频率
+    b, a = butter(4, [low, high], btype='band')  # 4阶滤波器
+    filtered_signal = filtfilt(b, a, signal)  # 应用滤波器
+    return filtered_signal
 
 
 # 读取声波信号并提取数据
@@ -52,19 +63,25 @@ def record_audio_stream():
 
                 if preamble_idx != -1:
                     print("检测到前导码，开始解码数据包...")
+                    print(signal_bits)
+
+                    # 在前导码下画波浪线
+                    line_length = len(signal_bits)
+                    wave_line = " " * preamble_idx + "~" * len(preamble) + " " * (
+                                line_length - (preamble_idx + len(preamble)))
+                    print(wave_line)
 
                     # 等待足够的header和payload数据
                     header_end_idx = preamble_idx + len(preamble) + 24  # header为24位
-                    if len(buffer) >= header_end_idx:
+                    if len(signal_bits) >= header_end_idx:
                         header_bits = signal_bits[preamble_idx + len(preamble):header_end_idx]
-
                         # 解析header
                         payload_length, packet_rank, total_packet_length = parse_header(header_bits)
                         total_packets = total_packet_length  # 获取总包数
 
                         # 等待足够的payload数据
                         payload_end_idx = header_end_idx + payload_length
-                        if len(buffer) >= payload_end_idx:
+                        if len(signal_bits) >= payload_end_idx:
                             payload_bits = signal_bits[header_end_idx: payload_end_idx]
 
                             # 解码数据包
@@ -76,7 +93,6 @@ def record_audio_stream():
 
                             # 更新接收的包的序号
                             total_packets_received += 1
-
                             # 如果接收到所有包，停止接收
                             if total_packets_received == total_packets:
                                 print("所有包已接收完毕，停止接收数据。")
@@ -109,13 +125,20 @@ def decode_data_packet(payload_bits):
 
 
 # 提取信号中的频率成分（FSK解调）
-def demodulate_fsk(signal):
-    signal = np.array(signal)
+def demodulate_fsk(signal, DEBUG=False):
+    # signal = np.array(signal)  # 确保信号是numpy数组
+
+    signal = np.array(signal)  # 使用滤波后的信号
+
     # 计算每个比特的FFT
     signal_length = len(signal)
-    bit_count = int(signal_length / (sample_rate * bit_duration))
+    bit_count = int(signal_length / (sample_rate * bit_duration))  # 每个比特的时长
     decoded_bits = []
 
+    # 创建一个图形来绘制每个比特的FFT
+    plt.figure(figsize=(10, 6))
+
+    tolerance = 50
     for i in range(bit_count):
         start_idx = int(i * sample_rate * bit_duration)
         end_idx = int((i + 1) * sample_rate * bit_duration)
@@ -124,17 +147,38 @@ def demodulate_fsk(signal):
         # 计算频率
         freqs = np.fft.fftfreq(len(segment), 1 / sample_rate)
         fft_vals = np.fft.fft(segment)
-        peak_freq = freqs[np.argmax(np.abs(fft_vals))]
+        fft_mag = np.abs(fft_vals)
 
-        # 判断频率属于0或1
-        if peak_freq < (freq_0 + freq_1) / 2:
+        if DEBUG:
+            # 绘制该比特段的FFT幅度谱
+            plt.plot(freqs[:len(freqs)//2], fft_mag[:len(fft_mag)//2])  # 只绘制正频率部分
+
+        # 计算主频率峰值
+        peak_freq = freqs[np.argmax(fft_mag)]
+
+        # 判断频率属于0还是1
+        if abs(peak_freq - freq_0) < tolerance:
             decoded_bits.append('0')
-        else:
+        elif abs(peak_freq - freq_1) < tolerance:
             decoded_bits.append('1')
+        else:
+            print(f"未知的频率: {peak_freq}")
+            decoded_bits.append('2')
+
+    if DEBUG:
+        # 设置绘图标题与标签
+        plt.title("FFT of FSK Signal Segments")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Magnitude")
+        plt.grid(True)
+
+        # 展示所有比特段的FFT图像
+        plt.show()
 
     # 获取解调后的比特串
     signal_bits = ''.join(decoded_bits)
     return signal_bits
+
 
 
 # 解码数据包
