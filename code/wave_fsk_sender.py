@@ -5,14 +5,17 @@ import sounddevice as sd
 
 # 调制参数
 sample_rate = 44100  # 采样率
-bit_duration = 0.2  # 每个比特的持续时间（增加比特持续时间以减少ISI）
+bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
-freq_1 = 3000  # 频率1对应3000 Hz，增加频率间隔以降低干扰
+freq_1 = 2000  # 频率1对应2000 Hz
 max_payload_length = 192  # 最大负载长度（比特数）
 
-# 升余弦滤波器参数
-alpha = 0.35  # 滤波器的滚降因子
-span = 6  # 滤波器的长度，表示滤波器的脉冲持续时间
+"""
+数据包结构:
+preamble: 11111111
+header: payload_length(8 bit) payload_rank(8 bit) total_packet_length(8 bit)
+payload: 最大长度 = 96 bit
+"""
 
 
 # 汉明码编码器（7,4编码）
@@ -74,40 +77,16 @@ def split_into_packets(binary_data):
     return packets
 
 
-# 升余弦滤波器（Raised Cosine Filter）
-def raised_cosine_filter(beta, span, sps):
-    t = np.linspace(-span / 2, span / 2, span * sps)
-    h = np.sinc(t) * np.cos(np.pi * beta * t) / (1 - (2 * beta * t) ** 2)
-    h /= np.sum(h)
-    return h
-
-
-# 应用升余弦滤波
-def apply_pulse_shaping(signal, sps):
-    filter_taps = raised_cosine_filter(alpha, span, sps)
-    shaped_signal = np.convolve(signal, filter_taps, mode='same')
-    return shaped_signal
-
-
 # FSK调制
 def modulate_fsk(binary_data):
-    sps = int(sample_rate * bit_duration)  # 每个比特的采样点数
     signal = []
-
     for bit in binary_data:
-        t = np.linspace(0, bit_duration, sps, endpoint=False)
+        t = np.linspace(0, bit_duration, int(sample_rate * bit_duration), endpoint=False)
         if bit == '0':
             signal.append(np.sin(2 * np.pi * freq_0 * t))
         else:
             signal.append(np.sin(2 * np.pi * freq_1 * t))
-
-    # 合并所有符号信号
-    modulated_signal = np.concatenate(signal)
-
-    # 应用脉冲成形（升余弦滤波）
-    modulated_signal = apply_pulse_shaping(modulated_signal, sps)
-
-    return modulated_signal
+    return np.concatenate(signal)
 
 
 # 保存每个包的调制信号为不同的wav文件
