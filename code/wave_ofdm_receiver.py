@@ -64,9 +64,10 @@ def demodulate_signal(signal, fs, M, symbol_duration):
         spectrum = np.abs(np.fft.fft(symbol_signal))
         peak_freq_idx = np.argmax(spectrum)
         symbol_freq = freqs[peak_freq_idx]
+        print(symbol_freq)
 
         # 将频率映射到QAM符号
-        symbol = int(np.round(symbol_freq % M))
+        symbol = int(np.round(abs(symbol_freq) / 1000))
         symbols.append(symbol)
 
     binary_data = qam_to_binary(symbols, M)
@@ -111,6 +112,7 @@ def receive_signal_from_microphone(fs, preamble_bits, bit_duration, symbol_durat
                 preamble = '11111111'  # 前导码
                 preamble_idx = signal_bits.find(preamble)
 
+                print(signal_bits)
                 if preamble_idx != -1:
                     print("检测到前导码，开始解码数据包...")
                     print(signal_bits)

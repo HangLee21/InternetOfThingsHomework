@@ -32,7 +32,7 @@ def generate_sound_wave(qam_symbols, fs, f0, symbol_duration):
     sound_wave = []
 
     for symbol in qam_symbols:
-        carrier_freq = f0 + symbol  # 假设每个符号对应不同的频率
+        carrier_freq = f0 + symbol * 1000  # 假设每个符号对应不同的频率
         carrier_signal = np.cos(2 * np.pi * carrier_freq * t)  # 生成载波信号
         sound_wave.extend(carrier_signal)
 
