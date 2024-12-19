@@ -79,6 +79,40 @@ def record_audio_stream():
                         payload_length, packet_rank, total_packet_length = parse_header(header_bits)
                         total_packets = total_packet_length  # 获取总包数
 
+                        if len(signal_bits) >= 24:
+                            signal = np.array(buffer) - np.mean(buffer)
+
+                            # 计算每个比特的FFT
+                            signal_length = len(signal)
+                            bit_count = int(signal_length / (sample_rate * bit_duration))  # 每个比特的时长
+
+                            for i in range(bit_count):
+                                if i > preamble_idx - 2:
+                                    start_idx = int(i * sample_rate * bit_duration)
+                                    end_idx = int((i + 1) * sample_rate * bit_duration)
+                                    segment = signal[start_idx:end_idx]
+
+                                    # Perform FFT on the current signal segment
+                                    freqs = np.fft.fftfreq(len(segment), 1 / sample_rate)
+                                    fft_vals = np.fft.fft(segment)
+                                    fft_mag = np.abs(fft_vals)
+
+                                    # Calculate the peak frequency (find the index with the maximum magnitude)
+                                    peak_freq = freqs[np.argmax(fft_mag)]
+
+                                    # 绘制每个比特的FFT图
+                                    plt.figure(figsize=(10, 6))
+                                    plt.plot(freqs[:len(freqs) // 2], fft_mag[:len(fft_mag) // 2])
+                                    plt.title(f"FFT of Bit {i + 1} (Peak Frequency: {abs(peak_freq)} Hz)")
+                                    plt.xlabel("Frequency (Hz)")
+                                    plt.ylabel("Magnitude")
+                                    plt.grid(True)
+                                    plt.show()
+
+                                    print(f'当前位置: {i}, 波峰频率: {abs(peak_freq)}')
+
+                            break
+
                         # 等待足够的payload数据
                         payload_end_idx = header_end_idx + payload_length
                         if len(signal_bits) >= payload_end_idx:
@@ -97,6 +131,7 @@ def record_audio_stream():
                             if total_packets_received == total_packets:
                                 print("所有包已接收完毕，停止接收数据。")
                                 break
+
 
                 # 如果缓冲区没有足够的数据，则继续接收
                 else:
@@ -125,57 +160,46 @@ def decode_data_packet(payload_bits):
 
 
 # 提取信号中的频率成分（FSK解调）
-def demodulate_fsk(signal, DEBUG=False):
-    # signal = np.array(signal)  # 确保信号是numpy数组
-
-    signal = np.array(signal)  # 使用滤波后的信号
+def demodulate_fsk(signal):
+    # 使用滤波后的信号
+    signal = np.array(signal) - np.mean(signal)
 
     # 计算每个比特的FFT
     signal_length = len(signal)
     bit_count = int(signal_length / (sample_rate * bit_duration))  # 每个比特的时长
     decoded_bits = []
 
-    # 创建一个图形来绘制每个比特的FFT
-    plt.figure(figsize=(10, 6))
 
-    tolerance = 50
+
+    cnt = 0
+    # 遍历信号，找到前导码的位置
     for i in range(bit_count):
         start_idx = int(i * sample_rate * bit_duration)
         end_idx = int((i + 1) * sample_rate * bit_duration)
         segment = signal[start_idx:end_idx]
 
-        # 计算频率
+        # Perform FFT on the current signal segment
         freqs = np.fft.fftfreq(len(segment), 1 / sample_rate)
         fft_vals = np.fft.fft(segment)
         fft_mag = np.abs(fft_vals)
 
-        if DEBUG:
-            # 绘制该比特段的FFT幅度谱
-            plt.plot(freqs[:len(freqs)//2], fft_mag[:len(fft_mag)//2])  # 只绘制正频率部分
+        # Set the FFT result to zero for frequencies below 500 Hz
+        mask = np.abs(freqs) < 500
+        fft_mag[mask] = 0  # Zero out frequencies lower than 500 Hz
+        fft_vals[mask] = 0  # Zero out the corresponding FFT values as well
 
-        # 计算主频率峰值
+        # Calculate the peak frequency (find the index with the maximum magnitude)
         peak_freq = freqs[np.argmax(fft_mag)]
 
-        # 判断频率属于0还是1
-        if abs(peak_freq - freq_0) < tolerance:
+        tolerance = 100
+        # Check if the peak frequency corresponds to 0 or 1
+        if abs(abs(peak_freq) - freq_0) < tolerance:
             decoded_bits.append('0')
-        elif abs(peak_freq - freq_1) < tolerance:
+        elif abs(abs(peak_freq) - freq_1) < tolerance:
             decoded_bits.append('1')
         else:
-            print(f"未知的频率: {peak_freq}")
             decoded_bits.append('2')
 
-    if DEBUG:
-        # 设置绘图标题与标签
-        plt.title("FFT of FSK Signal Segments")
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Magnitude")
-        plt.grid(True)
-
-        # 展示所有比特段的FFT图像
-        plt.show()
-
-    # 获取解调后的比特串
     signal_bits = ''.join(decoded_bits)
     return signal_bits
 
