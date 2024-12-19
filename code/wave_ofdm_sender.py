@@ -47,14 +47,22 @@ def play_sound(sound_wave, fs):
 
 
 # 5. 创建数据包结构（前导码、包头和数据内容）
-def create_data_packet(binary_data):
+def create_data_packet(binary_data, packet_id, total_packets):
     """创建一个数据包，包括前导码（Preamble）、包头（Header）和数据内容段（Payload）"""
-    preamble = '1111111111'  # 示例前导码
-    header = format(len(binary_data), '08b')  # 数据包长度（8位）
-    payload = binary_data  # 数据内容段
+    preamble = '11111111'  # 前导码（8位）
+    payload_max_size = 96  # 每个数据包的最大长度为96位
+    payload = binary_data[:payload_max_size]  # 截取数据内容段（Payload）
+
+    # 包头：长度、排名和总长度
+    payload_length = format(len(payload), '08b')  # 数据内容长度（8位）
+    packet_rank = format(packet_id, '08b')  # 数据包的排名（8位）
+    total_packet_length = format(len(binary_data), '08b')  # 总数据包长度（8位）
 
     # 拼接数据包
-    return preamble + header + payload
+    header = payload_length + packet_rank + total_packet_length
+    data_packet = preamble + header + payload
+
+    return data_packet
 
 
 # 6. 将长文本拆分为多个数据包
@@ -80,28 +88,27 @@ def main():
     binary_data = text_to_binary(input_text)
     print("二进制数据：", binary_data)
 
-    # 2. 创建数据包（可选）
-    data_packet = create_data_packet(binary_data)
-    print("数据包：", data_packet)
+    # 2. 将二进制数据拆分成多个数据包
+    packet_size = 96  # 每个数据包的最大大小（比特数）
+    packets = split_text_into_packets(binary_data, packet_size)
+    print("拆分后的数据包：", packets)
 
-    # 3. 将二进制转QAM符号
+    # 3. 创建数据包并调制QAM符号
     M = 4  # QPSK
-    qam_symbols = binary_to_qam(binary_data, M)
-    print("QAM符号：", qam_symbols)
-
-    # 4. 生成声波信号
     fs = 44100  # 采样频率（Hz）
     f0 = 1000  # 基准频率（Hz）
     symbol_duration = 0.1  # 每个符号的持续时间（秒）
 
-    # 6. 如果文本过长，拆分为多个数据包
-    packet_size = 50  # 每个数据包的大小（比特数）
-    packets = split_text_into_packets(binary_data, packet_size)
-    print("拆分后的数据包：", packets)
-
-    # 这里可以选择是否播放每个数据包的音频信号
+    # 4. 对每个数据包进行处理
     for i, packet in enumerate(packets):
-        qam_symbols = binary_to_qam(packet, M)
+        data_packet = create_data_packet(packet, i + 1, len(packets))  # 创建数据包
+        print(f"数据包 {i + 1}：", data_packet)
+
+        # 将数据包的二进制内容转为QAM符号
+        qam_symbols = binary_to_qam(data_packet, M)
+        print(f"QAM符号 {i + 1}：", qam_symbols)
+
+        # 生成并播放声波信号
         sound_wave = generate_sound_wave(qam_symbols, fs, f0, symbol_duration)
         print(f"播放数据包 {i + 1}")
         play_sound(sound_wave, fs)
