@@ -39,14 +39,34 @@ def generate_sound_wave(qam_symbols, fs, f0, symbol_duration):
     return np.array(sound_wave)
 
 
-# 4. 播放生成的声波信号
+# 4. 添加循环前缀（Cyclic Prefix）到每个符号
+def add_cyclic_prefix(signal, cp_length, fs, symbol_duration):
+    """为调制信号的每个符号添加循环前缀"""
+    num_samples_cp = int(cp_length * fs * symbol_duration)  # 计算循环前缀的样本数
+    signal_with_cp = []
+    for i in range(0, len(signal), int(fs * symbol_duration)):  # 按照每个符号进行处理
+        symbol = signal[i:i + int(fs * symbol_duration)]
+        cp_signal = symbol[-num_samples_cp:]  # 从符号的末尾取出循环前缀部分
+        signal_with_cp.extend(cp_signal)
+        signal_with_cp.extend(symbol)  # 添加循环前缀后的符号
+    return np.array(signal_with_cp)
+
+
+# 5. 添加保护间隔
+def add_guard_interval(signal, guard_interval_length):
+    """为信号添加保护间隔"""
+    guard_interval = np.zeros(guard_interval_length)  # 生成保护间隔（为零的样本）
+    return np.concatenate([guard_interval, signal])  # 在信号前添加保护间隔
+
+
+# 6. 播放生成的声波信号
 def play_sound(sound_wave, fs):
     """播放生成的声波信号"""
     sd.play(sound_wave, fs)
     sd.wait()  # 等待声音播放完成
 
 
-# 5. 创建数据包结构（前导码、包头和数据内容）
+# 7. 创建数据包结构（前导码、包头和数据内容）
 def create_data_packet(binary_data, packet_id, total_packets):
     """创建一个数据包，包括前导码（Preamble）、包头（Header）和数据内容段（Payload）"""
     preamble = '11111111'  # 前导码（8位）
@@ -65,7 +85,7 @@ def create_data_packet(binary_data, packet_id, total_packets):
     return data_packet
 
 
-# 6. 将长文本拆分为多个数据包
+# 8. 将长文本拆分为多个数据包
 def split_text_into_packets(binary_data, packet_size):
     """将长文本分割为多个数据包，每个数据包的大小为packet_size"""
     packets = []
@@ -99,6 +119,12 @@ def main():
     f0 = 1000  # 基准频率（Hz）
     symbol_duration = 0.1  # 每个符号的持续时间（秒）
 
+    # 循环前缀长度（符号数）
+    cp_length = 4  # 循环前缀的符号数
+
+    # 保护间隔长度（样本数）
+    guard_interval_length = 1000  # 保护间隔的长度（样本数）
+
     # 4. 对每个数据包进行处理
     for i, packet in enumerate(packets):
         data_packet = create_data_packet(packet, i + 1, len(packets))  # 创建数据包
@@ -110,8 +136,15 @@ def main():
 
         # 生成并播放声波信号
         sound_wave = generate_sound_wave(qam_symbols, fs, f0, symbol_duration)
+
+        # 添加循环前缀
+        sound_wave_with_cp = add_cyclic_prefix(sound_wave, cp_length, fs, symbol_duration)
+
+        # 添加保护间隔
+        sound_wave_with_guard_interval = add_guard_interval(sound_wave_with_cp, guard_interval_length)
+
         print(f"播放数据包 {i + 1}")
-        play_sound(sound_wave, fs)
+        play_sound(sound_wave_with_guard_interval, fs)
 
 
 if __name__ == "__main__":

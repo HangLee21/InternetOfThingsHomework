@@ -64,7 +64,6 @@ def demodulate_signal(signal, fs, M, symbol_duration):
         spectrum = np.abs(np.fft.fft(symbol_signal))
         peak_freq_idx = np.argmax(spectrum)
         symbol_freq = freqs[peak_freq_idx]
-        print(symbol_freq)
 
         # 将频率映射到QAM符号
         symbol = int(np.round(abs(symbol_freq) / 1000))

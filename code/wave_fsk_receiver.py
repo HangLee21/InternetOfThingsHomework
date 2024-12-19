@@ -24,6 +24,16 @@ def bandpass_filter(signal, lowcut, highcut, sample_rate):
     return filtered_signal
 
 
+# 包络检测
+def envelope_detection(signal, sample_rate):
+    # 整流：取绝对值
+    rectified_signal = np.abs(signal)
+
+    # 对整流后的信号应用低通滤波器
+    envelope = bandpass_filter(rectified_signal, 0, 10, sample_rate)  # 低通滤波，平滑包络
+    return envelope
+
+
 # 读取声波信号并提取数据
 def read_wave(file_path):
     rate, data = read(file_path)
@@ -160,48 +170,34 @@ def decode_data_packet(payload_bits):
 
 
 # 提取信号中的频率成分（FSK解调）
-def demodulate_fsk(signal):
-    # 使用滤波后的信号
-    signal = np.array(signal) - np.mean(signal)
+def demodulate_fsk(signal, f1, f2, sample_rate, bit_duration):
+    signal = np.array(signal) - np.mean(signal)  # 去除DC分量
 
-    # 计算每个比特的FFT
-    signal_length = len(signal)
-    bit_count = int(signal_length / (sample_rate * bit_duration))  # 每个比特的时长
+    # 计算信号的比特数
+    bit_count = int(len(signal) / (sample_rate * bit_duration))  # 每个比特的时长
     decoded_bits = []
 
-
-
-    cnt = 0
-    # 遍历信号，找到前导码的位置
     for i in range(bit_count):
         start_idx = int(i * sample_rate * bit_duration)
         end_idx = int((i + 1) * sample_rate * bit_duration)
         segment = signal[start_idx:end_idx]
 
-        # Perform FFT on the current signal segment
-        freqs = np.fft.fftfreq(len(segment), 1 / sample_rate)
-        fft_vals = np.fft.fft(segment)
-        fft_mag = np.abs(fft_vals)
+        # 对两个频率分量进行带通滤波
+        bandpass_f1 = bandpass_filter(segment, f1 - 50, f1 + 50, sample_rate)  # 选择频率f1附近的带宽
+        bandpass_f2 = bandpass_filter(segment, f2 - 50, f2 + 50, sample_rate)  # 选择频率f2附近的带宽
 
-        # Set the FFT result to zero for frequencies below 500 Hz
-        mask = np.abs(freqs) < 500
-        fft_mag[mask] = 0  # Zero out frequencies lower than 500 Hz
-        fft_vals[mask] = 0  # Zero out the corresponding FFT values as well
+        # 对两个频率分量进行包络检测
+        envelope_f1 = envelope_detection(bandpass_f1, sample_rate)
+        envelope_f2 = envelope_detection(bandpass_f2, sample_rate)
 
-        # Calculate the peak frequency (find the index with the maximum magnitude)
-        peak_freq = freqs[np.argmax(fft_mag)]
-
-        tolerance = 100
-        # Check if the peak frequency corresponds to 0 or 1
-        if abs(abs(peak_freq) - freq_0) < tolerance:
-            decoded_bits.append('0')
-        elif abs(abs(peak_freq) - freq_1) < tolerance:
-            decoded_bits.append('1')
+        # 比较两个包络的幅度
+        if np.max(envelope_f1) > np.max(envelope_f2):
+            decoded_bits.append('0')  # f1的包络更强，判定为比特0
         else:
-            decoded_bits.append('2')
+            decoded_bits.append('1')  # f2的包络更强，判定为比特1
 
-    signal_bits = ''.join(decoded_bits)
-    return signal_bits
+    return ''.join(decoded_bits)
+
 
 
 
