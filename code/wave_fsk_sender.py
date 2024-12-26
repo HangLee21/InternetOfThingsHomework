@@ -4,7 +4,7 @@ from scipy.io.wavfile import write
 import sounddevice as sd
 
 # 调制参数
-sample_rate = 44100  # 采样率
+sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
 freq_1 = 2000  # 频率1对应2000 Hz

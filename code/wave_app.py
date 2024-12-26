@@ -19,7 +19,7 @@ class AudioRecorder:
         self.is_recording = True
         self.stream = self.p.open(format=pyaudio.paInt16,
                                   channels=1,
-                                  rate=44100,
+                                  rate=48000,
                                   input=True,
                                   frames_per_buffer=1024)
         print("开始录制...")
