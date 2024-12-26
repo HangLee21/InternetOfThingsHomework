@@ -8,10 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # 解调参数
-sample_rate = 44100  # 采样率
+sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 5000  # 频率0对应1000 Hz
-freq_1 = 8000  # 频率1对应2000 Hz
+freq_0 = 3750  # 频率0对应1000 Hz
+freq_1 = 7500  # 频率1对应2000 Hz
 max_payload_length = 192  # 最大负载长度（比特数）
 
 # 带通滤波器设计
@@ -164,7 +164,7 @@ def parse_header(header_bits):
 # 解码数据包
 def decode_data_packet(payload_bits):
     # 解码payload（假设payload不含错误，需要汉明解码）
-    decoded_payload = hamming_decode(payload_bits)  # 纠错后得到有效负载
+    decoded_payload = payload_bits  # 纠错后得到有效负载
     return binary_to_text(decoded_payload)
 
 
@@ -217,13 +217,12 @@ def decode_data_packet(signal_bits, preamble_idx):
 
     # 获取数据段（Payload），并加入汉明解码
     payload = signal_bits[preamble_idx + 32:preamble_idx + 32 + payload_length]
-    corrected_payload = hamming_decode(payload)  # 纠错后得到有效负载
 
     # 如果接收到的包是最后一个包，则停止监听
     if packet_rank == total_packet_length:
         print("接收到最后一个包，结束接收。")
 
-    return binary_to_text(corrected_payload), packet_rank  # 返回有效负载
+    return binary_to_text(payload), packet_rank  # 返回有效负载
 
 
 # 汉明码解码器（纠错）
@@ -306,6 +305,7 @@ def decode_signal(file_paths=None, use_file_input=True):
             # 读取音频文件
             rate, signal = read_wave(file_path)
             signal_bits = demodulate_fsk(signal, freq_0, freq_1, sample_rate, bit_duration)  # 解调
+            print(signal_bits)
             preamble = '11111111'  # 前导码
             preamble_idx = signal_bits.find(preamble)
 

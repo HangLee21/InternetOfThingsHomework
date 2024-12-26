@@ -6,8 +6,8 @@ import sounddevice as sd
 # 调制参数
 sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 5000  # 频率0对应1000 Hz
-freq_1 = 8000  # 频率1对应2000 Hz
+freq_0 = 3750  # 频率0对应1000 Hz
+freq_1 = 7500  # 频率1对应2000 Hz
 max_payload_length = 96  # 最大负载长度（比特数）
 
 """

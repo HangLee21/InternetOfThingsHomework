@@ -12,10 +12,10 @@ PREAMBLE_WINDOW_SIZE = None
 DATA_WINDOW_SIZE = None
 
 # 解调参数
-sample_rate = 44100  # 采样率
+sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 1000  # 频率0对应1000 Hz
-freq_1 = 2000  # 频率1对应2000 Hz
+freq_0 = 3750  # 频率0对应1000 Hz
+freq_1 = 7500  # 频率1对应2000 Hz
 max_payload_length = 96  # 最大负载长度（比特数）
 packet_length = (max_payload_length + 24) / 8
 CRC_LENGTH = 0
@@ -214,6 +214,7 @@ def fr_demodulate(sig):
             'payload_rank': payload_rank,
             'char_list': char_list[:payload_len]
         })
+        print(char_list)
 
     return data_packets
 
