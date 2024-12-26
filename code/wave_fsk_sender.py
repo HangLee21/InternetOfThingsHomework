@@ -7,7 +7,7 @@ from utils import rsencode, barray2binarray
 
 # 调制参数
 SAMPLE_RATE = 48000  # 采样率
-BIT_DURATION = 0.1  # 每个比特的持续时间
+BIT_DURATION = 0.025  # 每个比特的持续时间
 FREQ_0 = 3750  # 频率0对应1000 Hz
 FREQ_1 = 7500  # 频率1对应2000 Hz
 PACKET_TEXT_LENGTH = 12
