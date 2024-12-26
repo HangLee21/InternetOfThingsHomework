@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 # 解调参数
 sample_rate = 44100  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 1000  # 频率0对应1000 Hz
-freq_1 = 2000  # 频率1对应2000 Hz
+freq_0 = 5000  # 频率0对应1000 Hz
+freq_1 = 8000  # 频率1对应2000 Hz
 max_payload_length = 192  # 最大负载长度（比特数）
 
 # 带通滤波器设计
