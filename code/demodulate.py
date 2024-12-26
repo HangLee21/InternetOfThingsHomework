@@ -14,8 +14,8 @@ DATA_WINDOW_SIZE = None
 # 解调参数
 sample_rate = 44100  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 4000  # 频率0对应1000 Hz
-freq_1 = 6000  # 频率1对应2000 Hz
+freq_0 = 1000  # 频率0对应1000 Hz
+freq_1 = 2000  # 频率1对应2000 Hz
 max_payload_length = 96  # 最大负载长度（比特数）
 packet_length = (max_payload_length + 24) / 8
 CRC_LENGTH = 0
@@ -452,4 +452,8 @@ def binary_to_text(binary_data):
 # 拼接多个数据包的负载内容
 def concatenate_payloads(payloads):
     return ''.join(payloads)
+
+if '__name__' == '__main__':
+    _, audio_sequence = wavfile.read(str("output/record.wav"))
+    fr_demodulate(audio_sequence)
 
