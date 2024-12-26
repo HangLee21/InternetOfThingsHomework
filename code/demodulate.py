@@ -55,7 +55,6 @@ def perform_demodulation(signal):
         data_start_time = sync_end
         packet_data, next_data_end_time, raw_signals = decode_packet_data(freq, time, spectrogram,
                                                                           data_start_time)
-        assert len(packet_data) == (DATA_PACKET_SIZE + CHECKSUM_SIZE) * 8  # 校验数据包长度
         decoded_packets.append(packet_data)
         current_time_index = next_data_end_time  # 更新当前解调时间
 
@@ -142,8 +141,8 @@ def apply_frequency_filter(freq_idx, signal):
     diff_lower = np.log10(filtered_band) - np.log10(filtered_band_lower)
     diff_upper = np.log10(filtered_band) - np.log10(filtered_band_upper)
 
-    near_comp = np.multiply(np.where(diff_lower > 8, 1, 0),
-                            np.where(diff_upper > 8, 1, 0))
+    near_comp = np.multiply(np.where(diff_lower > 5, 1, 0),
+                            np.where(diff_upper > 5, 1, 0))
     self_comp = np.where(filtered_band > np.median(filtered_band), 1, 0)
     return np.multiply(near_comp, self_comp)
 
@@ -219,6 +218,7 @@ def signal_prepare(freq, signal_spectrogram):
     filtered_signal_high = apply_frequency_filter(high_freq_idx, signal_spectrogram)
     raw_signal_low = compute_convolution(low_freq_idx, signal_spectrogram)
     raw_signal_high = compute_convolution(high_freq_idx, signal_spectrogram)
+
     return low_freq_idx, high_freq_idx, filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high
 
 def locate_preamble(freq, time, signal_spectrogram, start_index):

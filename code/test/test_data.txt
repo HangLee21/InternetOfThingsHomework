@@ -1,4 +1,4 @@
 str1 = 1234567890qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM
 str2 = The quick brown fox jumps over the lazy dog. This is a test message that includes a variety of characters such as numbers 1234567890, punctuation marks !@#$%^&*(). Let's test different cases: lowercase, UPPERCASE, and MixedCase. Also, here are some common words like "hello", "world", "data", and "communication" to see how they are handled. Do not forget the sentence-ending punctuation, such as periods, exclamation marks, and question marks. Testing complete!
 
-Nvaw\*;T{|0|{Ol.Iwk{_$qyahgF_1c$;%*nb?z$JEil3OK^dh;a_0,P{AX6h9Qcu{T./9p9n8xB39[MBoXUw<hhEV(&Sjy-VM"A
+Nvaw\*;T{|0|{Ol.Iwk{_$qyahgF_1c$;%*nb?z$JEil3OK^dh;a_0,P{AX6h9Qcu{T./9p9n8xB39[MBoXUw<hhEV(&Sjy-VM"A123123

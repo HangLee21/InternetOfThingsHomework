@@ -58,7 +58,7 @@ def analyze_symbol_error_rate(baseline_text, decoded_text):
     min_length = min(len(baseline_symbols), len(decoded_symbols))
 
     # 计算符号错误
-    symbol_errors = sum(1 for i in range(min_length) if baseline_symbols[i] == decoded_symbols[i])
+    symbol_errors = sum(1 for i in range(min_length) if baseline_symbols[i] != decoded_symbols[i])
 
     # 计算符号错误率
     if min_length == 0:
@@ -70,6 +70,9 @@ def analyze_symbol_error_rate(baseline_text, decoded_text):
 def main():
     baseline_text = get_baseline_text()
     decoded_text = demodulate_audio("output/record.wav")
+
+    print(f'baseline:\t{baseline_text}')
+    print(f'decoded:\t{decoded_text}')
     ber = analyze_bit_error_rate(baseline_text, decoded_text)
     ser = analyze_symbol_error_rate(baseline_text, decoded_text)
     print(f'SER: {ser}, BER: {ber}')
