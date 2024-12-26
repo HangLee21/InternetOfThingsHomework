@@ -89,8 +89,7 @@ class AudioApp:
         self.save_decoded_text(decoded_text)
 
     def save_decoded_text(self, decoded_text):
-        # 保存到文件
-        with open("output/decoded_output.txt", "w") as f:
+        with open('decoded_text.txt', 'w', encoding='utf-8', errors='replace') as f:
             f.write(decoded_text)
 
         print("解码文本已自动保存为 decoded_output.txt")
