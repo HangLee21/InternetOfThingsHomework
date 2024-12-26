@@ -2,10 +2,7 @@ import tkinter as tk
 import pyaudio
 import wave
 import threading
-
-from scipy.io import wavfile
-
-from demodulate import fr_demodulate
+from demodulate import demodulate_signal_wav
 # 音频录制类
 class AudioRecorder:
     def __init__(self):
@@ -83,14 +80,7 @@ class AudioApp:
         self.decode_and_display()
 
     def decode_and_display(self):
-        _, audio_sequence = wavfile.read(str("output/record.wav"))
-        data_packets = fr_demodulate(audio_sequence)
-        # 提取并拼接所有字典中的 char_list
-        decoded_text = ''.join(
-            packet['char_list'] for packet in data_packets
-        )
-        # 解码并显示结果
-        # 显示解码后的文本
+        decoded_text = demodulate_signal_wav("output/record.wav")
         self.result_text.config(text=decoded_text)
 
 # 主程序

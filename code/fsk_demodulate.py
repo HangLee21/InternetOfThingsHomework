@@ -2,6 +2,7 @@ import os
 import numpy as np
 import tkinter as tk
 import pyaudio
+import scipy
 from scipy.io.wavfile import read
 from scipy.signal import butter, filtfilt
 import numpy as np
@@ -12,7 +13,7 @@ sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 3750  # 频率0对应1000 Hz
 freq_1 = 7500  # 频率1对应2000 Hz
-max_payload_length = 192  # 最大负载长度（比特数）
+max_payload_length = 96  # 最大负载长度（比特数）
 
 # 带通滤波器设计
 def bandpass_filter(signal, lowcut, highcut, sample_rate):
@@ -177,6 +178,9 @@ def demodulate_fsk(signal, f1, f2, sample_rate, bit_duration):
     bit_count = int(len(signal) / (sample_rate * bit_duration))  # 每个比特的时长
     decoded_bits = []
 
+    f, t, Zxx = scipy.signal.spectrogram(signal, sample_rate, nperseg=256)
+    freq_index_0 = np.argmin(np.abs(f - freq_0))
+    freq_index_1 = np.argmin(np.abs(f - freq_1))
     for i in range(bit_count):
         start_idx = int(i * sample_rate * bit_duration)
         end_idx = int((i + 1) * sample_rate * bit_duration)

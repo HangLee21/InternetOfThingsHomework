@@ -6,6 +6,7 @@ from scipy.io import wavfile
 from scipy.io.wavfile import read
 import numpy as np
 
+from utils import rsdecode, binarray2barray
 
 time_interval = None
 PREAMBLE_WINDOW_SIZE = None
@@ -16,10 +17,10 @@ sample_rate = 48000  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 3750  # 频率0对应1000 Hz
 freq_1 = 7500  # 频率1对应2000 Hz
-max_payload_length = 96  # 最大负载长度（比特数）
-packet_length = (max_payload_length + 24) / 8
-CRC_LENGTH = 0
+PACKET_LENGTH = 12
+CRC_LENGTH = 4
 PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]
+
 
 # 读取声波信号并提取数据
 def read_wave(file_path):
@@ -27,158 +28,6 @@ def read_wave(file_path):
     if len(data.shape) == 2:  # 如果是立体声，将其转换为单声道
         data = data.mean(axis=1)
     return rate, data
-
-
-# 缓冲区，用于缓存接收到的音频信号
-buffer = []
-
-# 读取实时音频流
-# def record_audio_stream():
-#     global buffer
-#     p = pyaudio.PyAudio()
-#
-#     # 创建音频流
-#     stream = p.open(format=pyaudio.paInt16,
-#                     channels=1,
-#                     rate=sample_rate,
-#                     input=True,
-#                     frames_per_buffer=1024)
-#     print("开始接收音频信号...")
-#
-#     # 用于跟踪接收的包序号
-#     total_packets_received = 0
-#     data_packets = []
-#     main_t_idx = 0
-#     current_length = 0
-#
-#     # 使用一个标志位来手动控制停止
-#     recording = True
-#
-#     # 创建一个 wave 文件来保存音频数据
-#     wf = wave.open("record.wav", "wb")
-#     wf.setnchannels(1)  # 设置声道数，1 表示单声道
-#     wf.setsampwidth(2)  # 设置采样宽度，2 表示 16 位样本
-#     wf.setframerate(sample_rate)  # 设置采样率
-#
-#     try:
-#         while recording:
-#             data = stream.read(1024)
-#             buffer = np.append(buffer, np.frombuffer(data, dtype=np.int16))  # 将新数据添加到缓冲区
-#
-#             # 将音频数据写入 wave 文件
-#             wf.writeframes(data)
-#
-#             if len(buffer) > (sample_rate * bit_duration * (packet_length * 8 + 8)) + main_t_idx:
-#                 global time_interval, PREAMBLE_WINDOW_SIZE, DATA_WINDOW_SIZE
-#                 f, t, Zxx = scipy.signal.spectrogram(buffer, sample_rate, nperseg=256)
-#                 Zxx = np.abs(Zxx)
-#
-#                 time_interval = t[1] - t[0]
-#                 PREAMBLE_WINDOW_SIZE = int(bit_duration / time_interval)
-#                 DATA_WINDOW_SIZE = int(bit_duration / time_interval)
-#
-#                 have_preamble, preamble_end, signal_bits = find_preamble(f, t, Zxx, main_t_idx)
-#
-#                 if have_preamble:
-#                     print("检测到前导码，开始解码数据包...")
-#                     current_length = len(buffer)
-#                     # 确保缓冲区有足够的数据以解码整个数据包
-#                     data_start = preamble_end
-#                     # 在检测到前导码后，我们需要持续监听，直到接收到足够的数据
-#                     while len(buffer) < current_length + packet_length * bit_duration * sample_rate:
-#                         # 继续读取更多数据直到缓冲区包含整个包的长度
-#                         data = stream.read(1024)
-#                         buffer = np.append(buffer, np.frombuffer(data, dtype=np.int16))
-#                         print(f"缓冲区长度：{len(buffer)}，等待接收数据...")
-#                         wf.writeframes(data)  # 同时写入音频数据到文件
-#
-#                     # 解码数据包
-#                     data, data_end, raw, logs = decode_data(f, t, Zxx, data_start)
-#                     assert len(data) == (packet_length + CRC_LENGTH) * 8
-#
-#                     # 将二进制数据转换为十进制
-#                     decimal_list, header, char_list = binary_to_decimal(data)
-#                     payload_len = header[0] // 8  # 单位是字节
-#                     payload_rank = header[1]
-#                     total_packets = header[2]
-#
-#                     print(f'payload len:{payload_len}, payload_rank:{payload_rank}, total_packets: {total_packets}')
-#                     data_packets.append({
-#                         'payload_rank': payload_rank,
-#                         'char_list': char_list[:payload_len]
-#                     })
-#
-#                     main_t_idx = data_end  # 更新数据包结束的索引
-#                     total_packets_received += 1
-#
-#                     # 检查是否接收到所有包
-#                     if total_packets_received == total_packets:
-#                         print('接收完成')
-#                         break
-#
-#             # 每隔一段时间检查一次用户输入以手动停止录制
-#             if not recording:
-#                 break
-#
-#             # 检查用户输入以结束录制
-#             user_input = input("输入 'stop' 停止录制：")
-#             if user_input.lower() == "stop":
-#                 print("用户请求停止录制。")
-#                 recording = False
-#                 break
-#
-#     except KeyboardInterrupt:
-#         print("停止接收音频信号")
-#     finally:
-#         # 关闭流和终止 PyAudio
-#         stream.stop_stream()
-#         stream.close()
-#         p.terminate()
-#
-#         # 关闭 wav 文件
-#         wf.close()
-#         print("录制已停止并保存为 record.wav")
-
-
-
-def binary_to_decimal(binary_data):
-    # 确保 binary_data 是由 0 和 1 组成的列表
-    if not all(bit in [0, 1] for bit in binary_data):
-        raise ValueError("输入数据必须是由 0 和 1 组成的二进制列表")
-
-    # 将二进制数据按每 8 位拆分为字节
-    byte_list = [binary_data[i:i + 8] for i in range(0, len(binary_data), 8)]
-
-    # 将每个字节转换为十进制数字
-    decimal_list = [int(''.join(map(str, byte)), 2) for byte in byte_list]
-
-    # 提取前三个数字作为 header
-    header = decimal_list[:3]
-
-    # 将剩余的数字转换为字符（假设这些数字是 ASCII 码）
-    char_list = [chr(num) for num in decimal_list[3:]]  # 从第四个数字开始转字符
-
-    return decimal_list, header, char_list
-
-
-def fr_modulate_freq(freq, t):
-    N = int(sample_rate * t)
-    x = np.arange(N) / sample_rate
-    y = np.sin(2 * np.pi * freq * x)
-    return y
-
-
-def fr_modulate(code_seq, sym_dur, sig_0_freq=freq_0, sig_1_freq=freq_1):
-    N = int(sample_rate * sym_dur)
-    t = np.arange(N) / sample_rate
-    base_signal_0 = np.sin(2 * np.pi * sig_0_freq * t)
-    base_signal_1 = np.sin(2 * np.pi * sig_1_freq * t)
-    modulated_signal = np.zeros((N * len(code_seq)))
-    for i in range(len(code_seq)):
-        modulated_signal[i * N: (i + 1) *
-                                N] = base_signal_0 if code_seq[i] == 0 else base_signal_1
-    return modulated_signal
-
 
 
 def fr_demodulate(sig):
@@ -200,21 +49,9 @@ def fr_demodulate(sig):
 
         data_start = preamble_end
         data, data_end, raw, logs = decode_data(f, t, Zxx, data_start)
-        assert len(data) == (packet_length + CRC_LENGTH) * 8
+        assert len(data) == (PACKET_LENGTH + CRC_LENGTH) * 8
         data_packets.append(data)
         main_t_idx = data_end
-
-        decimal_list, header, char_list = binary_to_decimal(data)
-        payload_len = header[0] // 8  # 单位是字节
-        payload_rank = header[1]
-        total_packets = header[2]
-
-        print(f'payload len:{payload_len}, payload_rank:{payload_rank}, total_packets: {total_packets}')
-        data_packets.append({
-            'payload_rank': payload_rank,
-            'char_list': char_list[:payload_len]
-        })
-        print(char_list)
 
     return data_packets
 
@@ -229,7 +66,7 @@ def decode_data(f, t, Zxx, data_start):
 
     logs = []
     data = []
-    data_symbol_num = (packet_length + CRC_LENGTH) * 8
+    data_symbol_num = (PACKET_LENGTH + CRC_LENGTH) * 8
 
     raw_sig_0 = raw_sig_0 / np.max(
         raw_sig_0[data_start: data_start + to_data_segment_place(data_start, data_symbol_num)])
@@ -266,7 +103,7 @@ def decode_data(f, t, Zxx, data_start):
 
 
 def to_data_segment_place(start, n):
-    return start + int(n * time_interval)
+    return start + int(bit_duration * n / time_interval)
 
 
 def select_freq(f, target_f):
@@ -403,58 +240,23 @@ def find_preamble(f, t, sig_xx, start):
     return False, len(filtered_sig_0), (filtered_sig_0, filtered_sig_1, raw_sig_0, raw_sig_1, t)
 
 
-# 汉明码解码器（纠错）
-def hamming_decode(bits):
-    """ 对输入的比特串进行汉明码解码，返回纠错后的有效比特 """
-    # 汉明(7, 4)编码，7位中4位是数据位，3位是校验位
-    n = len(bits)
-    corrected_bits = []
-    for i in range(0, n, 7):
-        # 每7位为一组
-        block = bits[i:i + 7]
-        if len(block) < 7:
-            break
-        # 校验位位置：0、1、3
-        p1 = block[0]
-        p2 = block[1]
-        p3 = block[3]
-        d1 = block[2]
-        d2 = block[4]
-        d3 = block[5]
-        d4 = block[6]
-
-        # 计算校验位的值
-        parity_1 = int(p1) ^ int(d1) ^ int(d2) ^ int(d4)
-        parity_2 = int(p2) ^ int(d1) ^ int(d3) ^ int(d4)
-        parity_3 = int(p3) ^ int(d2) ^ int(d3) ^ int(d4)
-
-        # 检查错误并纠正
-        error_pos = parity_1 * 1 + parity_2 * 2 + parity_3 * 4
-        if error_pos != 0:
-            print(f"检测到错误，位置：{error_pos}, 正在纠正")
-            block[error_pos - 1] = '1' if block[error_pos - 1] == '0' else '0'
-
-        # 提取数据位
-        corrected_bits.extend([block[2], block[4], block[5], block[6]])
-
-    return ''.join(corrected_bits)
-
-
-# 解码二进制比特串为字符
-def binary_to_text(binary_data):
-    text = ''
-    for i in range(0, len(binary_data), 8):
-        byte = binary_data[i:i + 8]
-        if len(byte) == 8:
-            text += chr(int(byte, 2))
-    return text
-
-
 # 拼接多个数据包的负载内容
 def concatenate_payloads(payloads):
     return ''.join(payloads)
 
-if '__name__' == '__main__':
-    _, audio_sequence = wavfile.read(str("output/record.wav"))
-    fr_demodulate(audio_sequence)
 
+def demodulate_signal_wav(file_path):
+    _, audio_sequence = wavfile.read(str(file_path))
+    data_packets = fr_demodulate(audio_sequence)
+    print(data_packets)
+    result = ''
+    for i, data in enumerate(data_packets):
+        data_string = rsdecode(binarray2barray(data))
+        result += data_string
+    result = result.replace('\0', '')
+    print(result)
+    return result
+
+
+if __name__ == '__main__':
+    demodulate_signal_wav("output/record.wav")
