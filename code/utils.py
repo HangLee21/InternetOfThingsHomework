@@ -6,6 +6,11 @@ CRC_LENGTH = 4
 PACKET_TEXT_LENGTH = 12
 codec = RSCodec(CRC_LENGTH)
 
+def barray2binarray(barray):
+    """ bytesarray to 01 np.array """
+    bin_str = ''.join(format(i, '08b') for i in barray)
+    return np.array([int(s) for s in bin_str]).astype(np.int32)
+
 def binarray2barray(binarray):
     """ 01 np.array to bytesarray """
     bin_str = ''.join(str(i) for i in binarray)
