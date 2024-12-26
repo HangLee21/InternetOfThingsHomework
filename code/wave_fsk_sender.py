@@ -8,7 +8,7 @@ sample_rate = 44100  # 采样率
 bit_duration = 0.1  # 每个比特的持续时间
 freq_0 = 1000  # 频率0对应1000 Hz
 freq_1 = 2000  # 频率1对应2000 Hz
-max_payload_length = 192  # 最大负载长度（比特数）
+max_payload_length = 96  # 最大负载长度（比特数）
 
 """
 数据包结构:
@@ -81,7 +81,7 @@ def split_into_packets(binary_data, max_payload_length):
         # 如果当前数据块小于最大负载长度，则补零
         if len(data_chunk) < max_payload_length:
             padding_length = max_payload_length - len(data_chunk)
-            data_chunk = data_chunk + [0] * padding_length  # 补零
+            data_chunk = data_chunk + '0' * padding_length  # 补零
 
         # 创建数据包
         packet = create_packet(data_chunk, packet_rank, total_packets, actual_data_length)
