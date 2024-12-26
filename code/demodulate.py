@@ -1,262 +1,229 @@
-import os
-import tkinter as tk
-import pyaudio
 import scipy
 from scipy.io import wavfile
 from scipy.io.wavfile import read
 import numpy as np
-
 from utils import rsdecode, binarray2barray
 
-time_interval = None
-PREAMBLE_WINDOW_SIZE = None
+# 解调相关参数
+SAMPLE_FREQUENCY = 48000  # 采样频率
+SYMBOL_DURATION = 0.1  # 每个符号的持续时间
+FREQ_LOW = 3750
+FREQ_HIGH = 7500
+DATA_PACKET_SIZE = 12  # 每个数据包的符号数
+CHECKSUM_SIZE = 4  # 校验位长度
+PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]  # 同步模式
+
+# 全局变量
+TIME_DELTA = None
+SYNC_WINDOW_SIZE = None
 DATA_WINDOW_SIZE = None
 
-# 解调参数
-sample_rate = 48000  # 采样率
-bit_duration = 0.1  # 每个比特的持续时间
-freq_0 = 3750  # 频率0对应1000 Hz
-freq_1 = 7500  # 频率1对应2000 Hz
-PACKET_LENGTH = 12
-CRC_LENGTH = 4
-PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]
 
-
-# 读取声波信号并提取数据
-def read_wave(file_path):
+# 读取音频文件并提取数据
+def load_audio(file_path):
+    """从WAV文件中读取音频并返回采样率及数据"""
     rate, data = read(file_path)
-    if len(data.shape) == 2:  # 如果是立体声，将其转换为单声道
+    if len(data.shape) == 2:  # 如果是立体声，转换为单声道
         data = data.mean(axis=1)
     return rate, data
 
 
-def fr_demodulate(sig):
-    global time_interval, PREAMBLE_WINDOW_SIZE, DATA_WINDOW_SIZE
-    f, t, Zxx = scipy.signal.spectrogram(sig, sample_rate, nperseg=256)
-    Zxx = np.abs(Zxx)
+def perform_demodulation(signal):
+    """对输入信号进行调制解调"""
+    global TIME_DELTA, SYNC_WINDOW_SIZE, DATA_WINDOW_SIZE
 
-    time_interval = t[1] - t[0]
-    PREAMBLE_WINDOW_SIZE = int(bit_duration / time_interval)
-    DATA_WINDOW_SIZE = int(bit_duration / time_interval)
+    # 计算信号的频谱
+    freq, time, spectrogram = scipy.signal.spectrogram(signal, SAMPLE_FREQUENCY, nperseg=256)
+    spectrogram = np.abs(spectrogram)
 
-    main_t_idx = 0
-    data_packets = []
+    # 计算时间间隔和窗口大小
+    TIME_DELTA = time[1] - time[0]
+    SYNC_WINDOW_SIZE = int(SYMBOL_DURATION / TIME_DELTA)
+    DATA_WINDOW_SIZE = int(SYMBOL_DURATION / TIME_DELTA)
 
-    while main_t_idx < len(t):
-        have_preamble, preamble_end, preamble_raw_data = find_preamble(f, t, Zxx, main_t_idx)
-        if not have_preamble:
-            break
+    current_time_index = 0
+    decoded_packets = []
 
-        data_start = preamble_end
-        data, data_end, raw, logs = decode_data(f, t, Zxx, data_start)
-        assert len(data) == (PACKET_LENGTH + CRC_LENGTH) * 8
-        data_packets.append(data)
-        main_t_idx = data_end
+    while current_time_index < len(time):
+        # 查找同步前导码
+        found_sync, sync_end, sync_data = locate_preamble(freq, time, spectrogram, current_time_index)
+        if not found_sync:
+            break  # 如果未找到同步前导码，则停止解调
 
-    return data_packets
+        data_start_time = sync_end
+        packet_data, next_data_end_time, raw_signals = decode_packet_data(freq, time, spectrogram,
+                                                                          data_start_time)
+        assert len(packet_data) == (DATA_PACKET_SIZE + CHECKSUM_SIZE) * 8  # 校验数据包长度
+        decoded_packets.append(packet_data)
+        current_time_index = next_data_end_time  # 更新当前解调时间
+
+    return decoded_packets
 
 
-def decode_data(f, t, Zxx, data_start):
-    f_0_idx = select_freq(f, freq_0)
-    f_1_idx = select_freq(f, freq_1)
-    filtered_sig_0 = filter_freq(f_0_idx, Zxx)
-    filtered_sig_1 = filter_freq(f_1_idx, Zxx)
-    raw_sig_0 = Zxx[f_0_idx]
-    raw_sig_1 = Zxx[f_1_idx]
+def normalize_amplitude(signal, start_idx, num_symbols):
+    """对信号进行归一化处理"""
+    return signal / np.max(signal[start_idx:start_idx + int(SYMBOL_DURATION * num_symbols / TIME_DELTA)])
 
-    logs = []
-    data = []
-    data_symbol_num = (PACKET_LENGTH + CRC_LENGTH) * 8
 
-    raw_sig_0 = raw_sig_0 / np.max(
-        raw_sig_0[data_start: data_start + to_data_segment_place(data_start, data_symbol_num)])
-    raw_sig_1 = raw_sig_1 / np.max(
-        raw_sig_1[data_start: data_start + to_data_segment_place(data_start, data_symbol_num)])
+def decode_packet_data(freq, time, spectrogram, start_time_index):
+    """解码数据部分"""
+    low_freq_idx = get_frequency_index(freq, FREQ_LOW)
+    high_freq_idx = get_frequency_index(freq, FREQ_HIGH)
 
-    t_idx = data_start
-    n_symbol = 0
+    # 提取低频和高频信号并进行归一化
+    filtered_signal_low = apply_frequency_filter(low_freq_idx, spectrogram)
+    filtered_signal_high = apply_frequency_filter(high_freq_idx, spectrogram)
+    raw_signal_low = spectrogram[low_freq_idx]
+    raw_signal_high = spectrogram[high_freq_idx]
 
-    t_idx = max(align_symbol(filtered_sig_0, t_idx, DATA_WINDOW_SIZE),
-                align_symbol(filtered_sig_1, t_idx, DATA_WINDOW_SIZE))
-    while t_idx < len(filtered_sig_1) and n_symbol < data_symbol_num:
-        # 对齐
-        # t_idx = max(align_symbol(filtered_sig_0, t_idx), align_symbol(filtered_sig_1, t_idx))
-        if t_idx >= len(filtered_sig_1):
-            break
-        conf_0 = calculate_symbol_confidence(raw_sig_0, t_idx, DATA_WINDOW_SIZE)
-        conf_1 = calculate_symbol_confidence(raw_sig_1, t_idx, DATA_WINDOW_SIZE)
+    decoded_bits = []  # 存储解调后的数据
+    total_symbols = (DATA_PACKET_SIZE + CHECKSUM_SIZE) * 8  # 总符号数量
 
-        flag_1_over_0 = np.where(
-            raw_sig_1[t_idx: t_idx + DATA_WINDOW_SIZE] > raw_sig_0[t_idx: t_idx + DATA_WINDOW_SIZE], 1, 0)
+    # 归一化信号
+    raw_signal_low = normalize_amplitude(raw_signal_low, start_time_index, total_symbols)
+    raw_signal_high = normalize_amplitude(raw_signal_high, start_time_index, total_symbols)
 
-        if np.average(flag_1_over_0) < 0.5:
-            data.append(0)
+    time_idx = start_time_index  # 初始化时间索引
+    symbol_count = 0  # 初始化符号计数
+
+    while time_idx < len(filtered_signal_high) and symbol_count < total_symbols:
+        # 选择符号（低频或高频）
+        comparison_result = np.where(raw_signal_high[time_idx: time_idx + DATA_WINDOW_SIZE] > raw_signal_low[
+                                                                                              time_idx: time_idx + DATA_WINDOW_SIZE], 1, 0)
+
+        if np.average(comparison_result) < 0.5:
+            decoded_bits.append(0)
         else:
-            data.append(1)
+            decoded_bits.append(1)
 
-        logs.append({'t': t[to_data_segment_place(data_start, n_symbol)], 'conf_0': conf_0, 'conf_1': conf_1,
-                     'symbol': data[-1]})
-        n_symbol += 1
-        t_idx = to_data_segment_place(data_start, n_symbol)
+        symbol_count += 1
+        time_idx = to_data_position(start_time_index, symbol_count)  # 更新时间索引
 
-    return data, t_idx, (filtered_sig_0, filtered_sig_1, t), logs
+    return decoded_bits, time_idx, (filtered_signal_low, filtered_signal_high, time)
 
 
-def to_data_segment_place(start, n):
-    return start + int(bit_duration * n / time_interval)
+def to_data_position(start, count):
+    """计算数据段的位置"""
+    return start + int(SYMBOL_DURATION * count / TIME_DELTA)
 
 
-def select_freq(f, target_f):
-    """ 返回频率序列中最接近目标频率的序号 """
-    return np.argmin(np.abs(f - target_f))
+def get_frequency_index(freq, target_freq):
+    """返回目标频率的索引"""
+    return np.argmin(np.abs(freq - target_freq))
 
 
-def calculate_conv(f_idx, sig_xx):
-    assert f_idx > 0 and f_idx < sig_xx.shape[0] - 1
-    conv = 2 * sig_xx[f_idx] - sig_xx[f_idx - 1] - sig_xx[f_idx + 1]
+def compute_convolution(idx, signal):
+    """计算信号的卷积值"""
+    assert idx > 0 and idx < signal.shape[0] - 1
+    conv = 2 * signal[idx] - signal[idx - 1] - signal[idx + 1]
     return np.where(conv > 0, conv, 1e-7)
 
 
-def filter_freq(f_idx, sig_xx):
-    """ 分离指定的频率，返回一个01序列 """
-    assert f_idx > 1 and f_idx < sig_xx.shape[0] - 2
-    filtered_band = calculate_conv(f_idx, sig_xx)
-    filtered_band_lower = calculate_conv(f_idx - 1, sig_xx)
-    filtered_band_upper = calculate_conv(f_idx + 1, sig_xx)
-    tmp_1 = np.log10(filtered_band) - np.log10(filtered_band_lower)
-    tmp_2 = np.log10(filtered_band) - np.log10(filtered_band_upper)
+def apply_frequency_filter(freq_idx, signal):
+    """对信号应用频率滤波"""
+    assert freq_idx > 1 and freq_idx < signal.shape[0] - 2
+    filtered_band = compute_convolution(freq_idx, signal)
+    filtered_band_lower = compute_convolution(freq_idx - 1, signal)
+    filtered_band_upper = compute_convolution(freq_idx + 1, signal)
+    diff_lower = np.log10(filtered_band) - np.log10(filtered_band_lower)
+    diff_upper = np.log10(filtered_band) - np.log10(filtered_band_upper)
 
-    near_comp = np.multiply(np.where(tmp_1 > 8, 1, 0),
-                            np.where(tmp_2 > 8, 1, 0))
+    near_comp = np.multiply(np.where(diff_lower > 8, 1, 0),
+                            np.where(diff_upper > 8, 1, 0))
     self_comp = np.where(filtered_band > np.median(filtered_band), 1, 0)
     return np.multiply(near_comp, self_comp)
 
 
-def calculate_symbol_confidence(raw_sig, t_idx, winsz):
-    """ 计算在指定频率序列的某一时间是一个symbol的开始的置信度 """
-    """ t 是 index """
-    t_next_idx = t_idx + winsz
-    conf = np.sum(raw_sig[t_idx: t_next_idx]) / winsz
-    return conf
+def compute_symbol_confidence(raw_signal, time_idx, window_size):
+    """计算符号的置信度"""
+    next_time_idx = time_idx + window_size
+    confidence = np.sum(raw_signal[time_idx: next_time_idx]) / window_size
+    return confidence
 
 
-def confirm_preamble_symbol_start(raw_sig_0, raw_sig_1, t_idx, t, symbol=1):
-    """ 确认在指定频率序列的某一时间是否是一个前导码symbol的开始 """
-    """ t 是 index """
-    conf_0 = calculate_symbol_confidence(raw_sig_0, t_idx, PREAMBLE_WINDOW_SIZE)
-    conf_1 = calculate_symbol_confidence(raw_sig_1, t_idx, PREAMBLE_WINDOW_SIZE)
+def verify_sync_symbol_start(raw_signal_low, raw_signal_high, time_idx, symbol=1):
+    """验证同步符号的开始位置"""
+    confidence_low = compute_symbol_confidence(raw_signal_low, time_idx, SYNC_WINDOW_SIZE)
+    confidence_high = compute_symbol_confidence(raw_signal_high, time_idx, SYNC_WINDOW_SIZE)
 
-    # print('\t{:.3f}: {:.3f}, {:.3f}'.format(t[t_idx], conf_0, conf_1))
     if symbol == 0:
-        return conf_0 > 0.01 * np.max(raw_sig_0) and np.log10(conf_0) - np.log10(conf_1) > 0.2
+        return confidence_low > 0.01 * np.max(raw_signal_low) and np.log10(confidence_low) - np.log10(
+            confidence_high) > 0.2
     else:
-        return conf_1 > 0.01 * np.max(raw_sig_1) and np.log10(conf_1) - np.log10(conf_0) > 0.2
+        return confidence_high > 0.01 * np.max(raw_signal_high) and np.log10(confidence_high) - np.log10(
+            confidence_low) > 0.2
 
 
-def find_next_symbol_start(filtered_sig, current_idx, symbol=1):
-    """ 寻找下一个 1 的开始，返回index，保证返回值一定大于current_idx，如果找不到，返回len(filtered_sig)"""
-    if filtered_sig[current_idx] == symbol:
-        if current_idx + 1 >= len(filtered_sig):
-            return len(filtered_sig)
-        res = current_idx + 1 + np.argmax(filtered_sig[current_idx + 1:] == symbol)
-        if filtered_sig[res] != symbol:
-            return len(filtered_sig)
+def find_next_symbol(filtered_signal, current_idx, symbol=1):
+    """查找下一个符号的位置"""
+    if filtered_signal[current_idx] == symbol:
+        if current_idx + 1 >= len(filtered_signal):
+            return len(filtered_signal)
+        res = current_idx + 1 + np.argmax(filtered_signal[current_idx + 1:] == symbol)
+        if filtered_signal[res] != symbol:
+            return len(filtered_signal)
         return res
     else:
-        res = current_idx + np.argmax(filtered_sig[current_idx:] == symbol)
+        res = current_idx + np.argmax(filtered_signal[current_idx:] == symbol)
         if res == current_idx:
-            return len(filtered_sig)
+            return len(filtered_signal)
         return res
 
+def locate_preamble(freq, time, signal_spectrogram, start_index):
+    """定位同步前导码的位置"""
+    low_freq_idx = get_frequency_index(freq, FREQ_LOW)
+    high_freq_idx = get_frequency_index(freq, FREQ_HIGH)
+    filtered_signal_low = apply_frequency_filter(low_freq_idx, signal_spectrogram)
+    filtered_signal_high = apply_frequency_filter(high_freq_idx, signal_spectrogram)
+    raw_signal_low = compute_convolution(low_freq_idx, signal_spectrogram)
+    raw_signal_high = compute_convolution(high_freq_idx, signal_spectrogram)
 
-def align_symbol(filtered_sig, t_idx, winsz, type='start', symbol=1):
-    ''' 对齐 t_idx 到一个 symbol 的开始，差距过大的话，不对齐，返回原来的 t_idx'''
-    if type == 'start':
-        if filtered_sig[t_idx] == symbol:
-            # 这里容易死循环，先不写，因为int取整只有可能落后，不可能超前
-            return t_idx
-        else:
-            offset = find_next_symbol_start(filtered_sig, t_idx) - t_idx
-            if offset < winsz:
-                return t_idx + offset
-            return t_idx
+    sync_start = start_index
+    correct_length = 0
 
-
-def find_preamble(f, t, sig_xx, start):
-    f_0_idx = select_freq(f, freq_0)
-    f_1_idx = select_freq(f, freq_1)
-    filtered_sig_0 = filter_freq(f_0_idx, sig_xx)
-    filtered_sig_1 = filter_freq(f_1_idx, sig_xx)
-    raw_sig_0 = calculate_conv(f_0_idx, sig_xx)
-    raw_sig_1 = calculate_conv(f_1_idx, sig_xx)
-
-    preamble_start = start
-    correct_len = 0
-    correct_target = PREAMBLE[correct_len]
-
-    while preamble_start < len(filtered_sig_1):
-
-        # find first symbol 1
-        if not confirm_preamble_symbol_start(raw_sig_0, raw_sig_1, preamble_start, t, 1):
-            preamble_start = find_next_symbol_start(filtered_sig_1, preamble_start)
-            if preamble_start >= len(filtered_sig_1):
-                print('finished')
+    while sync_start < len(filtered_signal_high):
+        # 过滤不符合的信号
+        if not verify_sync_symbol_start(raw_signal_low, raw_signal_high, sync_start, 1):
+            sync_start = find_next_symbol(filtered_signal_high, sync_start)
+            if sync_start >= len(filtered_signal_high):
+                print('查找完成')
                 break
 
-        # check preamble
-        while correct_len < len(PREAMBLE):
-            # print('correct_len: {}, current_time: {}, p_idx: {}'.format(correct_len, t[preamble_start], preamble_start))
-            if correct_target == 1:
-                # check 1
-                preamble_start = align_symbol(filtered_sig_1, preamble_start, PREAMBLE_WINDOW_SIZE)
-                if confirm_preamble_symbol_start(raw_sig_0, raw_sig_1, preamble_start, t, 1):
-                    correct_len += 1
-                    preamble_start += PREAMBLE_WINDOW_SIZE
-                    if correct_len == len(PREAMBLE):
-                        break
-                    correct_target = PREAMBLE[correct_len]
-                else:
-                    correct_len = 0
-                    correct_target = PREAMBLE[correct_len]
+        # 校验同步模式
+        while correct_length < len(PREAMBLE):
+            if verify_sync_symbol_start(raw_signal_low, raw_signal_high, sync_start, 1):
+                correct_length += 1
+                sync_start += SYNC_WINDOW_SIZE
+                if correct_length == len(PREAMBLE):
                     break
             else:
-                # check 0
-                preamble_start = align_symbol(filtered_sig_0, preamble_start, PREAMBLE_WINDOW_SIZE)
-                if confirm_preamble_symbol_start(raw_sig_0, raw_sig_1, preamble_start, t, 0):
-                    correct_len += 1
-                    preamble_start += PREAMBLE_WINDOW_SIZE
-                    if correct_len == len(PREAMBLE):
-                        break
-                    correct_target = PREAMBLE[correct_len]
-                else:
-                    correct_len = 0
-                    correct_target = PREAMBLE[correct_len]
-                    break
+                correct_length = 0
+                break
 
-        if correct_len == len(PREAMBLE):
-            print('find preamble ended at: {:.4f}s'.format(preamble_start * time_interval))
-            return True, preamble_start, (filtered_sig_0, filtered_sig_1, raw_sig_0, raw_sig_1, t)
+        if correct_length == len(PREAMBLE):
+            print(f'同步前导码找到，结束位置: {sync_start * TIME_DELTA:.4f}秒')
+            return True, sync_start, (filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high, time)
 
-    return False, len(filtered_sig_0), (filtered_sig_0, filtered_sig_1, raw_sig_0, raw_sig_1, t)
+    return False, len(filtered_signal_low), (
+        filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high, time)
 
 
-# 拼接多个数据包的负载内容
-def concatenate_payloads(payloads):
-    return ''.join(payloads)
+def demodulate_audio(file_path):
+    """解调WAV文件中的音频信号"""
+    _, audio_signal = wavfile.read(str(file_path))
+    decoded_packets = perform_demodulation(audio_signal)  # 解调信号
+    print(decoded_packets)
 
+    final_result = ''
+    for i, packet in enumerate(decoded_packets):
+        # 进行纠错解码
+        decoded_string = rsdecode(binarray2barray(packet))
+        final_result += decoded_string
 
-def demodulate_signal_wav(file_path):
-    _, audio_sequence = wavfile.read(str(file_path))
-    data_packets = fr_demodulate(audio_sequence)
-    print(data_packets)
-    result = ''
-    for i, data in enumerate(data_packets):
-        data_string = rsdecode(binarray2barray(data))
-        result += data_string
-    result = result.replace('\0', '')
-    print(result)
-    return result
+    final_result = final_result.replace('\0', '')  # 去除多余的空字符
+    print(final_result)
+    return final_result
 
 
 if __name__ == '__main__':
-    demodulate_signal_wav("output/record.wav")
+    demodulate_audio("output/record.wav")
