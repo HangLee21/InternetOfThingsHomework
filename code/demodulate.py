@@ -2,6 +2,8 @@ import scipy
 from scipy.io import wavfile
 from scipy.io.wavfile import read
 import numpy as np
+from scipy.signal import istft
+
 from utils import rsdecode, binarray2barray
 
 # 解调相关参数
@@ -80,11 +82,16 @@ def decode_packet_data(freq, time, spectrogram, start_time_index):
     symbol_count = 0  # 初始化符号计数
 
     while time_idx < len(filtered_signal_high) and symbol_count < total_symbols:
-        # 选择符号（低频或高频）
-        comparison_result = np.where(raw_signal_high[time_idx: time_idx + DATA_WINDOW_SIZE] > raw_signal_low[
-                                                                                              time_idx: time_idx + DATA_WINDOW_SIZE], 1, 0)
+        # 选择信号段
+        high_segment = raw_signal_high[time_idx: time_idx + DATA_WINDOW_SIZE]
+        low_segment = raw_signal_low[time_idx: time_idx + DATA_WINDOW_SIZE]
 
-        if np.average(comparison_result) < 0.5:
+        # 计算平均值
+        avg_high = np.mean(high_segment)
+        avg_low = np.mean(low_segment)
+
+        # 通过比较平均值来解码比特
+        if avg_low > avg_high:
             decoded_bits.append(0)
         else:
             decoded_bits.append(1)
@@ -93,7 +100,6 @@ def decode_packet_data(freq, time, spectrogram, start_time_index):
         time_idx = to_data_position(start_time_index, symbol_count)  # 更新时间索引
 
     return decoded_bits, time_idx, (filtered_signal_low, filtered_signal_high, time)
-
 
 def to_data_position(start, count):
     """计算数据段的位置"""
@@ -124,6 +130,35 @@ def apply_frequency_filter(freq_idx, signal):
     self_comp = np.where(filtered_band > np.median(filtered_band), 1, 0)
     return np.multiply(near_comp, self_comp)
 
+
+def bandpass_filter(freq, Sxx, center_freq, bandwidth):
+    """
+    过滤出指定频率周围的信号
+
+    参数:
+    signal: 输入信号
+    sample_frequency: 采样频率
+    center_freq: 中心频率
+    bandwidth: 带宽（过滤范围的一半）
+
+    返回:
+    filtered_signal: 滤波后的信号
+    freq: 频率数组
+    time: 时间数组
+    Sxx: 滤波后的频谱
+    """
+
+    # 创建频率掩码
+    freq_mask = (freq >= (center_freq - bandwidth)) & (freq <= (center_freq + bandwidth))
+
+    # 创建滤波后的频谱
+    filtered_Sxx = np.zeros_like(Sxx)
+    filtered_Sxx[freq_mask, :] = Sxx[freq_mask, :]
+
+    # 使用逆短时傅里叶变换（ISTFT）将滤波后的谱图转换回时域信号
+    _, filtered_signal = istft(filtered_Sxx, fs=SAMPLE_FREQUENCY, nperseg=256)
+
+    return filtered_signal
 
 def compute_symbol_confidence(raw_signal, time_idx, window_size):
     """计算符号的置信度"""

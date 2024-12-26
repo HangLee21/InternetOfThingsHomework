@@ -1,5 +1,4 @@
 import struct
-import wave
 import numpy as np
 from functools import reduce
 import pyaudio
@@ -16,7 +15,6 @@ PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]
 GAP_INTERVAL = 0.2
 AMPLITUDE = 5000
 START_INTERVAL = 1
-
 
 # 数据包结构:
 # preamble: 11111111
@@ -77,37 +75,22 @@ def make_send_packets(text):
     return reduce(lambda x, y: np.append(x, y), packets)
 
 
-def save_wave(signal, file_path='output/record.wav'):
-    """将调制信号保存为WAV文件"""
-    with wave.open(file_path, 'wb') as wf:
-        wf.setnchannels(1)  # 单声道
-        wf.setframerate(SAMPLE_RATE)  # 设置采样率
-        wf.setsampwidth(2)  # 设置每个采样点的字节数
+def play_audio(signal):
+    """播放音频信号"""
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=1,
+                    rate=SAMPLE_RATE,
+                    output=True)
 
-        # 写入信号数据
-        for sample in signal:
-            wf.writeframesraw(struct.pack('<h', int(AMPLITUDE * sample)))
+    # 播放信号
+    audio_data = (AMPLITUDE * signal).astype(np.int16).tobytes()  # 转换为字节格式
+    stream.write(audio_data)
 
-
-def play_wav(file_path):
-    """播放WAV文件"""
-    with wave.open(file_path, 'rb') as wf:
-        p = pyaudio.PyAudio()
-        stream = p.open(format=pyaudio.paInt16,
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True)
-
-        # 播放数据
-        data = wf.readframes(1024)
-        while data:
-            stream.write(data)
-            data = wf.readframes(1024)
-
-        # 关闭流
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
+    # 关闭流
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
 
 
 def main():
@@ -116,10 +99,8 @@ def main():
 
     # 生成发送数据包
     signals = make_send_packets(text)
-    save_wave(signals)
-    print("信号已保存为 WAV 文件。")
-    play_wav('output/record.wav')
-
+    print("信号正在播放...")
+    play_audio(signals)
 
 
 if __name__ == '__main__':
