@@ -8,7 +8,7 @@ from utils import rsdecode, binarray2barray
 
 # 解调相关参数
 SAMPLE_FREQUENCY = 48000  # 采样频率
-SYMBOL_DURATION = 0.025  # 每个符号的持续时间
+SYMBOL_DURATION = 0.1  # 每个符号的持续时间
 FREQ_LOW = 3750
 FREQ_HIGH = 7500
 DATA_PACKET_SIZE = 12  # 每个数据包的符号数
