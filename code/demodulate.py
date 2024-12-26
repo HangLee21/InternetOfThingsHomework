@@ -67,14 +67,7 @@ def normalize_amplitude(signal, start_idx, num_symbols):
 
 def decode_packet_data(freq, time, spectrogram, start_time_index):
     """解码数据部分"""
-    low_freq_idx = get_frequency_index(freq, FREQ_LOW)
-    high_freq_idx = get_frequency_index(freq, FREQ_HIGH)
-
-    # 提取低频和高频信号并进行归一化
-    filtered_signal_low = apply_frequency_filter(low_freq_idx, spectrogram)
-    filtered_signal_high = apply_frequency_filter(high_freq_idx, spectrogram)
-    raw_signal_low = spectrogram[low_freq_idx]
-    raw_signal_high = spectrogram[high_freq_idx]
+    low_freq_idx, high_freq_idx, filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high = signal_prepare(freq, spectrogram)
 
     decoded_bits = []  # 存储解调后的数据
     total_symbols = (DATA_PACKET_SIZE + CHECKSUM_SIZE) * 8  # 总符号数量
@@ -114,14 +107,12 @@ def get_frequency_index(freq, target_freq):
 
 def compute_convolution(idx, signal):
     """计算信号的卷积值"""
-    assert idx > 0 and idx < signal.shape[0] - 1
     conv = 2 * signal[idx] - signal[idx - 1] - signal[idx + 1]
     return np.where(conv > 0, conv, 1e-7)
 
 
 def apply_frequency_filter(freq_idx, signal):
     """对信号应用频率滤波"""
-    assert freq_idx > 1 and freq_idx < signal.shape[0] - 2
     filtered_band = compute_convolution(freq_idx, signal)
     filtered_band_lower = compute_convolution(freq_idx - 1, signal)
     filtered_band_upper = compute_convolution(freq_idx + 1, signal)
@@ -169,14 +160,18 @@ def find_next_symbol(filtered_signal, current_idx, symbol=1):
             return len(filtered_signal)
         return res
 
-def locate_preamble(freq, time, signal_spectrogram, start_index):
-    """定位同步前导码的位置"""
+def signal_prepare(freq, signal_spectrogram):
     low_freq_idx = get_frequency_index(freq, FREQ_LOW)
     high_freq_idx = get_frequency_index(freq, FREQ_HIGH)
     filtered_signal_low = apply_frequency_filter(low_freq_idx, signal_spectrogram)
     filtered_signal_high = apply_frequency_filter(high_freq_idx, signal_spectrogram)
     raw_signal_low = compute_convolution(low_freq_idx, signal_spectrogram)
     raw_signal_high = compute_convolution(high_freq_idx, signal_spectrogram)
+    return low_freq_idx, high_freq_idx, filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high
+
+def locate_preamble(freq, time, signal_spectrogram, start_index):
+    """定位同步前导码的位置"""
+    low_freq_idx, high_freq_idx, filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high = signal_prepare(freq, signal_spectrogram)
 
     sync_start = start_index
     correct_length = 0

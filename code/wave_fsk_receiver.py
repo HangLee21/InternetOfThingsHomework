@@ -2,7 +2,7 @@ import tkinter as tk
 import pyaudio
 import wave
 import threading
-from demodulate import demodulate_signal_wav  # 假设 demodulate_signal_wav 是你用来解码 WAV 文件的函数
+from demodulate import demodulate_audio  # 假设 demodulate_signal_wav 是你用来解码 WAV 文件的函数
 
 # 音频录制类
 class AudioRecorder:
@@ -82,7 +82,7 @@ class AudioApp:
 
     def decode_and_display(self):
         # 假设 demodulate_signal_wav 函数返回解码后的文本
-        decoded_text = demodulate_signal_wav("output/record.wav")
+        decoded_text = demodulate_audio("output/record.wav")
         self.result_text.config(text=decoded_text)
 
         # 自动保存解码文本到文件
@@ -90,7 +90,7 @@ class AudioApp:
 
     def save_decoded_text(self, decoded_text):
         # 保存到文件
-        with open("decoded_output.txt", "w") as f:
+        with open("output/decoded_output.txt", "w") as f:
             f.write(decoded_text)
 
         print("解码文本已自动保存为 decoded_output.txt")
