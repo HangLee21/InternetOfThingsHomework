@@ -47,15 +47,16 @@ def text_to_binary(text):
 
 
 # 创建数据包
-def create_packet(data, packet_rank, total_packets):
+def create_packet(data, packet_rank, total_packets, actual_data_length):
     preamble = '11111111'  # 前导码
 
     rank = format(packet_rank, '08b')  # 包头：包序号信息
     total_packet_length = format(total_packets, '08b')  # 包头：总包数（8 bit）
 
     # 对数据部分进行汉明编码
-    encoded_data = hamming_encode(data)
-    payload_length = format(len(encoded_data), '08b')  # 包头：数据长度（以比特为单位）
+    # encoded_data = hamming_encode(data)
+    encoded_data = data
+    payload_length = format(actual_data_length, '08b')  # 包头：数据长度（以比特为单位）
     # 组成数据包
     packet = preamble + payload_length + rank + total_packet_length + encoded_data
 
@@ -64,17 +65,32 @@ def create_packet(data, packet_rank, total_packets):
 
 
 # 划分文本为多个数据包
-def split_into_packets(binary_data):
+def split_into_packets(binary_data, max_payload_length):
     packets = []
     packet_rank = 1
     total_packets = (len(binary_data) + max_payload_length - 1) // max_payload_length  # 总包数
-    # 每个数据包最大负载长度为96 bits
+    packet_info = []  # 用于存储每个包的未补零长度
+
     for i in range(0, len(binary_data), max_payload_length):
+        # 获取当前数据块
         data_chunk = binary_data[i:i + max_payload_length]
-        packet = create_packet(data_chunk, packet_rank, total_packets)
+
+        # 记录当前数据块的实际负载长度
+        actual_data_length = len(data_chunk)
+
+        # 如果当前数据块小于最大负载长度，则补零
+        if len(data_chunk) < max_payload_length:
+            padding_length = max_payload_length - len(data_chunk)
+            data_chunk = data_chunk + [0] * padding_length  # 补零
+
+        # 创建数据包
+        packet = create_packet(data_chunk, packet_rank, total_packets, actual_data_length)
         packets.append(packet)
+        packet_info.append(actual_data_length)  # 记录当前包的实际负载长度
+
         packet_rank += 1
-    return packets
+
+    return packets, packet_info
 
 
 # FSK调制
@@ -114,7 +130,7 @@ def main():
 
     text = input("请输入文本：")
     binary_data = text_to_binary(text)  # 将文本转为二进制
-    packets = split_into_packets(binary_data)  # 将数据划分为多个包
+    packets, packet_info = split_into_packets(binary_data)  # 将数据划分为多个包
 
     # 发送数据包
     total_packets = len(packets)  # 获取总包数
