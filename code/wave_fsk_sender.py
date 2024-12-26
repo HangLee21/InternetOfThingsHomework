@@ -4,6 +4,8 @@ import wave
 import numpy as np
 from functools import reduce
 
+import pyaudio
+
 from utils import rsencode, barray2binarray
 
 # 调制参数
@@ -75,6 +77,8 @@ def main():
 
     save_wave(signals)
 
+    play_wav('output/record.wav')
+
 
 def fr_modulate_freq(freq, t):
     N = int(sample_rate * t)
@@ -106,6 +110,32 @@ def save_wave(signal):
         wf.writeframesraw(data)
     wf.close()
 
+def play_wav(file_path):
+    # 打开WAV文件
+    wf = wave.open(file_path, 'rb')
+
+    # 创建PyAudio对象
+    p = pyaudio.PyAudio()
+
+    # 打开流
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=wf.getnchannels(),
+                    rate=wf.getframerate(),
+                    output=True)
+
+    # 读取WAV文件数据
+    data = wf.readframes(1024)
+
+    # 播放WAV文件
+    while data:
+        stream.write(data)
+        data = wf.readframes(1024)
+
+    # 关闭流
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
 
 # 运行主程序
 main()
+
