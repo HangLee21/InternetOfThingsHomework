@@ -86,12 +86,8 @@ def decode_packet_data(freq, time, spectrogram, start_time_index):
         high_segment = raw_signal_high[time_idx: time_idx + DATA_WINDOW_SIZE]
         low_segment = raw_signal_low[time_idx: time_idx + DATA_WINDOW_SIZE]
 
-        # 计算平均值
-        avg_high = np.mean(high_segment)
-        avg_low = np.mean(low_segment)
-
-        # 通过比较平均值来解码比特
-        if avg_low > avg_high:
+        comparison_result = np.where(high_segment > low_segment, 1, 0)
+        if np.average(comparison_result) < 0.5:
             decoded_bits.append(0)
         else:
             decoded_bits.append(1)
@@ -99,7 +95,28 @@ def decode_packet_data(freq, time, spectrogram, start_time_index):
         symbol_count += 1
         time_idx = to_data_position(start_time_index, symbol_count)  # 更新时间索引
 
+
     return decoded_bits, time_idx, (filtered_signal_low, filtered_signal_high, time)
+
+    # while time_idx < len(filtered_signal_high) and symbol_count < total_symbols:
+    #     # 选择信号段
+    #     high_segment = raw_signal_high[time_idx: time_idx + DATA_WINDOW_SIZE]
+    #     low_segment = raw_signal_low[time_idx: time_idx + DATA_WINDOW_SIZE]
+    #
+    #     # 计算平均值
+    #     avg_high = np.mean(high_segment)
+    #     avg_low = np.mean(low_segment)
+    #
+    #     # 通过比较平均值来解码比特
+    #     if avg_low > avg_high:
+    #         decoded_bits.append(0)
+    #     else:
+    #         decoded_bits.append(1)
+    #
+    #     symbol_count += 1
+    #     time_idx = to_data_position(start_time_index, symbol_count)  # 更新时间索引
+    #
+    # return decoded_bits, time_idx, (filtered_signal_low, filtered_signal_high, time)
 
 def to_data_position(start, count):
     """计算数据段的位置"""
