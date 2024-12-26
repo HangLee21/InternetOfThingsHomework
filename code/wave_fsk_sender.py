@@ -130,7 +130,7 @@ def main():
 
     text = input("请输入文本：")
     binary_data = text_to_binary(text)  # 将文本转为二进制
-    packets, packet_info = split_into_packets(binary_data)  # 将数据划分为多个包
+    packets, packet_info = split_into_packets(binary_data, max_payload_length)  # 将数据划分为多个包
 
     # 发送数据包
     total_packets = len(packets)  # 获取总包数
