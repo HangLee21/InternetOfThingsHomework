@@ -13,7 +13,7 @@ FREQ_LOW = 3750
 FREQ_HIGH = 7500
 DATA_PACKET_SIZE = 12  # 每个数据包的符号数
 CHECKSUM_SIZE = 4  # 校验位长度
-PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]  # 同步模式
+PREAMBLE = [1, 1, 1, 1, 1, 1, 1, 1]  # 前导码
 
 # 全局变量
 TIME_DELTA = None
@@ -248,7 +248,6 @@ def locate_preamble(freq, time, signal_spectrogram, start_index):
                 break
 
         if correct_length == len(PREAMBLE):
-            print(f'同步前导码找到，结束位置: {sync_start * TIME_DELTA:.4f}秒')
             return True, sync_start, (filtered_signal_low, filtered_signal_high, raw_signal_low, raw_signal_high, time)
 
     return False, len(filtered_signal_low), (
