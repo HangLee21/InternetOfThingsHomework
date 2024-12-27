@@ -20,7 +20,6 @@ TIME_DELTA = None
 SYNC_WINDOW_SIZE = None
 DATA_WINDOW_SIZE = None
 
-
 # 读取音频文件并提取数据
 def load_audio(file_path):
     """从WAV文件中读取音频并返回采样率及数据"""

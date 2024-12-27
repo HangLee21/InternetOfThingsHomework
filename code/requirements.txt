@@ -1,0 +1,5 @@
+numpy>=1.26.4
+reedsolo>=1.7.0
+matplotlib>=3.9.1
+scipy>=1.14.0
+PyAudio>=0.2.14

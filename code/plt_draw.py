@@ -9,15 +9,15 @@ rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 def plot_ber_relationship():
     # 数据
     distances = np.array([50, 100, 150, 200])  # 距离
-    ber_dist = np.array([0, 0, 0.34, 0.4])  # 对应的BER
+    ber_dist = np.array([0, 0, 0.0089, 0.022])  # 对应的BER
 
     obstruction_factors = np.array([0, 2, 4])  # 遮挡因子
     obstruction_labels = ['水杯', '书籍', '人体']  # 对应中文标签
-    ber_obs = np.array([0.05, 0.1, 0.15])  # 对应的BER
+    ber_obs = np.array([0.0016, 0.014, 0.035])  # 对应的BER
 
     noise_levels = np.array([0, 1, 2])  # 噪声水平
     noise_labels = ['静环境', '人声说话环境', '大音量音乐嘈杂环境']  # 对应中文标签
-    ber_noise = np.array([0.05, 0.1, 0.2])  # 对应的BER
+    ber_noise = np.array([0, 0.0023, 0.024])  # 对应的BER
 
     # 创建一个3个子图的图形
     plt.figure(figsize=(15, 5))
