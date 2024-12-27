@@ -52,27 +52,30 @@ def make_send_packets(text):
 
     # 遍历每个数据包
     for chunk in text_split:
-        packet = np.array([])
-
-        # 添加前导码
-        preamble_packet = modulate_signal(PREAMBLE, BIT_DURATION, sig_0_freq=FREQ_0, sig_1_freq=FREQ_1)
-        packet = np.append(packet, preamble_packet)
-
-        # 填充并调制数据
-        if len(chunk) < PACKET_TEXT_LENGTH:
-            chunk = chunk + '\0' * (PACKET_TEXT_LENGTH - len(chunk))  # 填充至固定长度
-        rs_data = rsencode(chunk)
-        rs_data_packet = modulate_signal(barray2binarray(rs_data), BIT_DURATION, sig_0_freq=FREQ_0, sig_1_freq=FREQ_1)
-        packet = np.append(packet, rs_data_packet)
-
-        # 添加间隔信号
-        gap_packet = modulate_signal([0], GAP_INTERVAL)
-        packet = np.append(packet, gap_packet)
-
-        packets.append(packet)
+        packets.append(modulate_chuck(chunk=chunk))
 
     # 合并所有包并返回
     return reduce(lambda x, y: np.append(x, y), packets)
+
+def modulate_chuck(chunk):
+    packet = np.array([])
+
+    # 添加前导码
+    preamble_packet = modulate_signal(PREAMBLE, BIT_DURATION, sig_0_freq=FREQ_0, sig_1_freq=FREQ_1)
+    packet = np.append(packet, preamble_packet)
+
+    # 填充并调制数据
+    if len(chunk) < PACKET_TEXT_LENGTH:
+        chunk = chunk + '\0' * (PACKET_TEXT_LENGTH - len(chunk))  # 填充至固定长度
+    crc_data = rsencode(chunk)
+    crc_data_packet = modulate_signal(barray2binarray(crc_data), BIT_DURATION, sig_0_freq=FREQ_0, sig_1_freq=FREQ_1)
+    packet = np.append(packet, crc_data_packet)
+
+    # 添加间隔信号
+    gap_packet = modulate_signal([0], GAP_INTERVAL)
+    packet = np.append(packet, gap_packet)
+
+    return packet
 
 
 def play_audio(signal):
