@@ -29,15 +29,12 @@ def replace_invalid_characters(text):
     # 假设非法字符是 Unicode 无法编码的字符
     return ''.join(c if c.isprintable() else '\0' for c in text)
 
-def analyze_bit_error_rate(baseline_text, decoded_text):
+def analyze_bit_error_rate(baseline_text, decoded_array):
     """比较两个文本的比特错误"""
 
     # 编码基准文本和解码文本
     baseline_binary = rsencode(baseline_text)
     baseline_array = barray2binarray(baseline_binary)
-
-    decoded_binary = rsencode(replace_invalid_characters(decoded_text))
-    decoded_array = barray2binarray(decoded_binary)
 
     # 计算比特错误
     # 确保两个数组长度相同
@@ -69,11 +66,11 @@ def analyze_symbol_error_rate(baseline_text, decoded_text):
 
 def main():
     baseline_text = get_baseline_text()
-    decoded_text = demodulate_audio("output/record.wav")
+    decoded_text, binary_array = demodulate_audio("output/record.wav")
 
     print(f'baseline:\t{baseline_text}')
     print(f'decoded:\t{decoded_text}')
-    ber = analyze_bit_error_rate(baseline_text, decoded_text)
+    ber = analyze_bit_error_rate(baseline_text, binary_array)
     ser = analyze_symbol_error_rate(baseline_text, decoded_text)
     print(f'SER: {ser}, BER: {ber}')
 

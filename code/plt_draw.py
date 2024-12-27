@@ -9,10 +9,10 @@ rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 def plot_ber_relationship():
     # 数据
     distances = np.array([50, 100, 150, 200])  # 距离
-    ber_dist = np.array([0.1, 0.2, 0.3, 0.4])  # 对应的BER
+    ber_dist = np.array([0, 0, 0.34, 0.4])  # 对应的BER
 
     obstruction_factors = np.array([0, 2, 4])  # 遮挡因子
-    obstruction_labels = ['无', '书籍', '人体']  # 对应中文标签
+    obstruction_labels = ['水杯', '书籍', '人体']  # 对应中文标签
     ber_obs = np.array([0.05, 0.1, 0.15])  # 对应的BER
 
     noise_levels = np.array([0, 1, 2])  # 噪声水平

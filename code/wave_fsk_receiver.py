@@ -82,7 +82,7 @@ class AudioApp:
 
     def decode_and_display(self):
         # 假设 demodulate_signal_wav 函数返回解码后的文本
-        decoded_text = demodulate_audio("output/record.wav")
+        decoded_text, _ = demodulate_audio("output/record.wav")
         self.result_text.config(text=decoded_text)
 
         # 自动保存解码文本到文件
