@@ -1,7 +1,9 @@
+import numpy as np
+
 from demodulate import demodulate_audio
 from utils import rsencode, barray2binarray
 
-
+PACKET_TEXT_LENGTH = 12
 def read_first_line(file_path):
     """读取指定文件的第一行文本"""
     try:
@@ -29,12 +31,34 @@ def replace_invalid_characters(text):
     # 假设非法字符是 Unicode 无法编码的字符
     return ''.join(c if c.isprintable() else '\0' for c in text)
 
+def make_binary(text):
+    """根据输入文本生成完整的发送数据包"""
+    packets = []
+
+    # 将文本拆分为多个包
+    text_split = [text[i:i + PACKET_TEXT_LENGTH] for i in range(0, len(text), PACKET_TEXT_LENGTH)]
+
+    result = []
+    # 遍历每个数据包
+    for chunk in text_split:
+        packet = np.array([])
+
+        # 填充并调制数据
+        if len(chunk) < PACKET_TEXT_LENGTH:
+            chunk = chunk + '\0' * (PACKET_TEXT_LENGTH - len(chunk))  # 填充至固定长度
+        rs_data = rsencode(chunk)
+        result.append(barray2binarray(rs_data))
+
+    return [item for sublist in result for item in sublist]
+
 def analyze_bit_error_rate(baseline_text, decoded_array):
     """比较两个文本的比特错误"""
 
     # 编码基准文本和解码文本
-    baseline_binary = rsencode(baseline_text)
-    baseline_array = barray2binarray(baseline_binary)
+    baseline_array = make_binary(baseline_text)
+
+    # decoded_binary = rsencode(decoded_text)
+    # decoded_array = barray2binarray(decoded_binary)
 
     # 计算比特错误
     # 确保两个数组长度相同
